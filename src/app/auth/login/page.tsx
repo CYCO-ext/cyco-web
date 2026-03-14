@@ -27,7 +27,7 @@ export default function LoginPage() {
       alert("Email ou senha inválidos");
       return;
     }
-    router.push("/auth/welcome");
+    router.push("/");
   };
 
   return (
