@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const BASE_API_URL = process.env.BASE_API_URL;
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const res = await fetch("http://localhost:3001/session", {
+    const res = await fetch(`${BASE_API_URL}/session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

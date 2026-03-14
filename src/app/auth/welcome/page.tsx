@@ -1,26 +1,25 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 export default function WelcomePage() {
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const { data: session, status } = useSession();
   const router = useRouter();
 
-  useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      setUser(JSON.parse(userStr));
-    } else {
-      router.replace("/auth/login");
-    }
-  }, [router]);
+  if (status === "loading") return null;
 
-  if (!user) return null;
+  if (!session) {
+    if (typeof window !== "undefined") router.replace("/auth/login");
+    return null;
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">
-      <h1 className="text-3xl font-bold mb-4">Bem-vindo, {user.name}!</h1>
-      <p className="text-lg text-gray-600">Seu email: {user.email}</p>
+      <h1 className="text-3xl font-bold mb-4">Bem-vindo, {session.user?.name}!</h1>
+      <p className="text-lg text-gray-600">Seu email: {session.user?.email}</p>
+      {Boolean((session as any).role) && (
+        <p className="text-lg text-cyco-green mt-2">Tipo: {(session as any).role}</p>
+      )}
     </div>
   );
 }

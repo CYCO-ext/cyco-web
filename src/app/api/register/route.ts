@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const BASE_API_URL = process.env.BASE_API_URL;
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    // role: "GERADOR" ou "CATADOR"
     const { role, ...payload } = body;
     let endpoint = "";
     if (role === "GERADOR") {
-      endpoint = "http://localhost:3001/generator";
+      endpoint = `${BASE_API_URL}/generator`;
     } else if (role === "CATADOR") {
-      endpoint = "http://localhost:3001/waste-collectors";
+      endpoint = `${BASE_API_URL}/waste-collectors`;
     } else {
       return NextResponse.json({ error: "Tipo de usuário inválido" }, { status: 400 });
     }

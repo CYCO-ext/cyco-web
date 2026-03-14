@@ -8,6 +8,7 @@ import { button, Input } from "../../components/ui";
 import { useRouter } from "next/navigation";
 import { loginSchema } from "../../lib/schemas";
 import AuthLayout from "../../components/authLayout";
+import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,24 +19,15 @@ export default function LoginPage() {
   } = useForm<z.infer<typeof loginSchema>>({ resolver: zodResolver(loginSchema) });
 
   const onSubmit = async (data: z.infer<typeof loginSchema>) => {
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const result = await res.json();
-      if (!res.ok) {
-        alert(result.error || "Email ou senha inválidos");
-        return;
-      }
-      // Salva token e user no localStorage
-      localStorage.setItem("token", result.token);
-      localStorage.setItem("user", JSON.stringify(result.user));
-      router.push("/auth/welcome");
-    } catch (e) {
-      alert("Erro ao fazer login");
+    const res = await signIn("credentials", {
+      ...data,
+      redirect: false,
+    });
+    if (res?.error) {
+      alert("Email ou senha inválidos");
+      return;
     }
+    router.push("/auth/welcome");
   };
 
   return (
