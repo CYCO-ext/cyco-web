@@ -10,9 +10,8 @@ const icons = [
 export default function Sidebar() {
   return (
     <aside
-      className="flex flex-col justify-between items-center h-full py-8"
+      className="hidden md:flex flex-col justify-between items-center h-full py-8 md:w-[90px] w-full p-2 md:p-8"
       style={{
-        width: 90,
         background: "linear-gradient(180deg, #ACD294 0%, #F0E9C3 100%)",
       }}
     >

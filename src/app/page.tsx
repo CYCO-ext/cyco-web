@@ -19,20 +19,18 @@ export default function WelcomePage() {
   if (status === "loading" || !session) return null;
 
   return (
-    <div className="flex flex-col h-screen w-full overflow-hidden">
-      
-      {/* HEADER */}
+    <div className="flex flex-col h-screen w-full">
       <Header centerText="Olá, Boas Vindas!" />
-
-      {/* CONTEÚDO */}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-
-        <MainContent />
-
-        
+      <div className="flex flex-1 md:flex-row flex-col-reverse overflow-hidden min-h-0">
+        <div className="hidden md:flex h-full">
+          <Sidebar />
+        </div>
+        <div className="flex-1 min-h-0 w-full flex flex-col">
+          <div className="flex-1 overflow-y-auto">
+            <MainContent />
+          </div>
+        </div>
       </div>
-
     </div>
   );
 }
