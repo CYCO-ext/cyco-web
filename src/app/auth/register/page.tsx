@@ -28,6 +28,10 @@ export default function RegisterStep1() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterSchemaType>({
     resolver: zodResolver(registerSchema),
+    shouldUnregister: true,
+    defaultValues: {
+      ddi: "55",
+    },
   });
 
   const role = watch("role");
