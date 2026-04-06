@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     } else {
       return NextResponse.json({ error: "Tipo de usuário inválido" }, { status: 400 });
     }
+    console.log("Enviando payload para:", endpoint, payload);
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

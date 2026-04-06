@@ -1,4 +1,5 @@
 import { Home, Recycle, Gift, Settings, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const icons = [
   { icon: <Home size={28} />, label: "Home" },
@@ -8,6 +9,7 @@ const icons = [
 ];
 
 export default function Sidebar() {
+  const router = useRouter();
   return (
     <aside
       className="hidden md:flex flex-col justify-between items-center h-full py-8 md:w-[90px] w-full p-2 md:p-8"
@@ -33,6 +35,8 @@ export default function Sidebar() {
         <div
           className="w-14 h-14 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-red-500 hover:text-white transition cursor-pointer"
           title="Sair"
+          onClick={() => router.push("/auth/login")}
+
         >
           <LogOut size={28} />
         </div>
