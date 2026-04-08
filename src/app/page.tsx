@@ -18,6 +18,8 @@ export default function WelcomePage() {
 
   if (status === "loading" || !session) return null;
 
+  console.log("Session:", session);
+
   return (
     <div className="flex flex-col h-screen w-full">
       <Header centerText="Olá, Boas Vindas!" />
@@ -27,7 +29,7 @@ export default function WelcomePage() {
         </div>
         <div className="flex-1 min-h-0 w-full flex flex-col">
           <div className="flex-1 overflow-y-auto">
-            <MainContent />
+            <MainContent userType={(session as any)?.role === "WASTE_COLLECTOR" ? "WASTE_COLLECTOR" : "GENERATOR"} />
           </div>
         </div>
       </div>

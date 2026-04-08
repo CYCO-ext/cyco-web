@@ -28,7 +28,7 @@ export default function RegisterStep1() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterSchemaType>({
     resolver: zodResolver(registerSchema),
-    shouldUnregister: true,
+    shouldUnregister: false,
     defaultValues: {
       ddi: "55",
     },
@@ -44,7 +44,6 @@ export default function RegisterStep1() {
     }
   }, [step, role]);
 
-  // 🔥 AVANÇAR STEP
   const handleNextStep = async () => {
     const valid = await trigger(["email", "password", "role"]);
     if (!valid) return;
@@ -52,8 +51,8 @@ export default function RegisterStep1() {
     setStep(2);
   };
 
-  // 🔥 SUBMIT FINAL
   const onSubmit = async (data: RegisterSchemaType) => {
+    console.log("Submitting data:", data, { selectedMaterials, isEnterprise });
     try {
       let payload: any = {};
 
@@ -138,9 +137,7 @@ export default function RegisterStep1() {
       <h1 className="text-2xl font-semibold mb-1">Registre-se</h1>
       <div className="h-1 w-24 bg-cyco-green mb-6" />
 
-      {/* 🔥 IMPORTANTE: sem handleSubmit aqui */}
       <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-        {/* STEP 1 */}
         {step === 1 && (
           <>
             <div>

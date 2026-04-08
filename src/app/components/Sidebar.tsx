@@ -3,8 +3,8 @@ import { useRouter } from "next/navigation";
 
 const icons = [
   { icon: <Home size={28} />, label: "Home" },
-  { icon: <Recycle size={28} />, label: "Reciclagem" },
-  { icon: <Gift size={28} />, label: "Presente" },
+  { icon: <Recycle size={28} />, label: "Coletas" },
+  { icon: <Gift size={28} />, label: "CYCO Coins" },
   { icon: <Settings size={28} />, label: "Configurações" },
 ];
 

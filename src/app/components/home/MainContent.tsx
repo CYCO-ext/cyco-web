@@ -3,8 +3,9 @@ import ActiveCollectionsCard from "./cards/ActiveCollectionsCard";
 import EnvironmentalImpactCard from "./cards/EnvironmentalImpactCard";
 import CoinsCard from "./cards/CoinsCard";
 import LastCollectionsCard, { CollectionRow } from "./cards/LastCollectionsCard";
+import NextCollectionsCard from "./cards/NextCollectionsCard";
 
-export default function MainContent() {
+export default function MainContent({ userType }: { userType?: "WASTE_COLLECTOR" | "GENERATOR" }) {
   const coletasRecentes: CollectionRow[] = [
     { id: "1", kg: "120Kg", date: "14/09", status: "Concluída", rating: 5 },
     { id: "2", kg: "85Kg", date: "18/09", status: "Concluída", rating: null },
@@ -13,9 +14,28 @@ export default function MainContent() {
   ];
 
   const materials = [{ name: "Papel", value: 1175, color: "#3B82F6" },
-              { name: "Vidro", value: 1175, color: "#166534" }];
+  { name: "Vidro", value: 1175, color: "#166534" }];
 
- return (
+  const proximasColetas = [
+    {
+      id: 1,
+      date: new Date(2026, 3, 10, 14, 30),
+      location: "Rua das Flores, 123 - Centro",
+      time: "14:30",
+      weight: "30Kg",
+      materials: ["Papel", "Vidro"]
+    },
+    {
+      id: 2,
+      date: new Date(2026, 3, 12, 9, 0),
+      location: "Av. Brasil, 456 - Bairro Novo",
+      time: "09:00",
+      weight: "12Kg",
+      materials: ["Plástico"]
+    }
+  ];
+
+  return (
     <main className="w-full h-full bg-[#F5F5F5] p-4 md:p-14">
       <div className="flex flex-col gap-4 md:gap-10">
         {/* TOP */}
@@ -27,7 +47,11 @@ export default function MainContent() {
         {/* BOTTOM */}
         <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-10">
           <CoinsCard />
-          <LastCollectionsCard collections={coletasRecentes} />
+          {userType === "WASTE_COLLECTOR" ? (
+            <NextCollectionsCard collections={proximasColetas} />
+          ) : (
+            <LastCollectionsCard collections={coletasRecentes} />
+          )}
         </div>
       </div>
     </main>
