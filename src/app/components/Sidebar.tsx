@@ -2,10 +2,10 @@ import { Home, Recycle, Gift, Settings, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const icons = [
-  { icon: <Home size={28} />, label: "Home" },
-  { icon: <Recycle size={28} />, label: "Coletas" },
-  { icon: <Gift size={28} />, label: "CYCO Coins" },
-  { icon: <Settings size={28} />, label: "Configurações" },
+  { icon: <Home size={28} />, label: "Home", path: "/" },
+  { icon: <Recycle size={28} />, label: "Coletas", path: "/collections" },
+  { icon: <Gift size={28} />, label: "CYCO Coins", path: "/coins" },
+  { icon: <Settings size={28} />, label: "Configurações", path: "/settings" },
 ];
 
 export default function Sidebar() {
@@ -21,14 +21,15 @@ export default function Sidebar() {
 
       <div className="flex flex-col gap-8 items-center flex-1 justify-center">
         {icons.map((item) => (
-          <div
-            key={item.label}
-            className="w-14 h-14 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-cyco-green hover:text-white transition cursor-pointer"
-            title={item.label}
-          >
-            {item.icon}
-          </div>
-        ))}
+  <div
+    key={item.label}
+    className="w-14 h-14 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-cyco-green hover:text-white transition cursor-pointer"
+    title={item.label}
+    onClick={() => router.push(item.path)}
+  >
+    {item.icon}
+  </div>
+))}
       </div>
 
       <div className="mb-2">

@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 export default function CreateCollectionCard() {
-  const redirectUrl = "/nova-coleta"; // <--- Rota para criar coleta
+  const redirectUrl = "/collections/new"; 
 
   return (
     <a
