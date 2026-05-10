@@ -1,7 +1,14 @@
 import { Clock } from "lucide-react";
 
-export default function ActiveCollectionsCard() {
-  const redirectUrl = "/coletas"; 
+type ActiveCollectionsCardProps = {
+  count: number;
+  loading?: boolean;
+  error?: boolean;
+};
+
+export default function ActiveCollectionsCard({ count, loading, error }: ActiveCollectionsCardProps) {
+  const redirectUrl = "/collections"; 
+  const displayValue = loading ? "..." : count.toString();
 
   return (
     <a
@@ -16,8 +23,14 @@ export default function ActiveCollectionsCard() {
       </h2>
 
       <span className="text-5xl font-extrabold text-green-700 mt-4">
-        5
+        {displayValue}
       </span>
+
+      {error && (
+        <span className="text-xs font-medium text-gray-500">
+          Não foi possível atualizar agora
+        </span>
+      )}
 
       <Clock className="text-green-700 mt-4" size={75} />
     </a>

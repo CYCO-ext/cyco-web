@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(data, { status: res.status });
     }
     return NextResponse.json(data);
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: "Erro ao fazer login" }, { status: 500 });
   }
 }

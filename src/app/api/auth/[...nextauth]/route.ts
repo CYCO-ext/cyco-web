@@ -3,6 +3,30 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 const NEXTAUTH_URL = process.env.NEXTAUTH_URL;
 
+type TSessionOutputDTO = {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  role: "WASTE_COLLECTOR" | "GENERATOR";
+  token: string;
+};
+
+type SessionRole = TSessionOutputDTO["role"];
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function sessionRole(value: unknown): SessionRole | undefined {
+  return value === "GENERATOR" || value === "WASTE_COLLECTOR" ? value : undefined;
+}
+
 const handler = NextAuth({
   providers: [
     CredentialsProvider({
@@ -21,10 +45,12 @@ const handler = NextAuth({
           }),
         });
         if (!res.ok) return null;
-        const data = await res.json();
+        const data = await res.json() as Partial<TSessionOutputDTO>;
         if (data && data.user && data.token) {
           return {
-            ...data.user,
+            id: data.user.id,
+            name: data.user.name,
+            email: data.user.email,
             role: data.role,
             token: data.token,
           };
@@ -39,10 +65,13 @@ const handler = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.name = user.name;
-        token.email = user.email;
-        token.role = (user as any).role;
-        token.accessToken = (user as any).token;
+        const userRecord = asRecord(user);
+        token.id = optionalString(userRecord.id);
+        token.name = optionalString(userRecord.name);
+        token.email = optionalString(userRecord.email);
+        token.role = sessionRole(userRecord.role);
+        token.token = optionalString(userRecord.token);
+        console.log("JWT callback token after modification:", token);
       }
       return token;
     },
@@ -50,11 +79,14 @@ const handler = NextAuth({
       if (token) {
         session.user = {
           ...session.user,
-          name: token.name as string,
-          email: token.email as string,
+          id: token.id ?? "",
+          name: token.name ?? "",
+          email: token.email ?? "",
         };
-        (session as any).role = token.role;
-        (session as any).accessToken = token.accessToken;
+        const sessionRecord = session as unknown as Record<string, unknown>;
+        sessionRecord.role = token.role;
+        sessionRecord.token = token.token;
+        sessionRecord.accessToken = token.token;
       }
       return session;
     },

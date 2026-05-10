@@ -1,18 +1,24 @@
+import Link from "next/link";
 import { Star } from "lucide-react";
+import { LastCollectionRowView } from "@/app/lib/homeCollections";
 
-export type CollectionRow = {
-  id: string | number;
-  kg: string;
-  date: string;
-  status: "Concluída" | "Cancelado" | "Em Andamento";
-  rating: number | null;
-};
+export type CollectionRow = LastCollectionRowView;
 
 type LastCollectionsProps = {
   collections: CollectionRow[];
+  loading?: boolean;
+  error?: boolean;
 };
 
-export default function LastCollectionsCard({ collections }: LastCollectionsProps) {
+export default function LastCollectionsCard({ collections, loading, error }: LastCollectionsProps) {
+  function statusColor(status: string) {
+    const normalized = status.toLowerCase();
+    if (normalized.includes("cancel")) return "text-red-600";
+    if (normalized.includes("andamento")) return "text-blue-600";
+    if (normalized.includes("pendente")) return "text-amber-700";
+    return "text-green-700";
+  }
+
   return (
     <div className="bg-[#C7D6A3] rounded-2xl p-6 w-full h-full transition-all duration-300 ease-in-out 
                     shadow-sm hover:shadow-xl hover:-translate-y-1 hover:scale-[1.01] 
@@ -23,14 +29,24 @@ export default function LastCollectionsCard({ collections }: LastCollectionsProp
           Últimas coletas
         </h2>
 
-        <span className="text-sm text-green-800 font-semibold cursor-pointer hover:underline active:scale-95 transition-transform">
+        <Link href="/collections" className="text-sm text-green-800 font-semibold cursor-pointer hover:underline active:scale-95 transition-transform">
           Ver todas →
-        </span>
+        </Link>
       </div>
 
       <div className="flex flex-col gap-3">
-        {collections.map((row) => (
-          <div
+        {loading && (
+          <div className="text-gray-600 text-center py-8">Carregando coletas...</div>
+        )}
+        {!loading && error && (
+          <div className="text-gray-600 text-center py-8">Não foi possível carregar coletas</div>
+        )}
+        {!loading && !error && collections.length === 0 && (
+          <div className="text-gray-500 text-center py-8">Nenhuma coleta encontrada</div>
+        )}
+        {!loading && !error && collections.map((row) => (
+          <Link
+            href="/collections"
             key={row.id}
             className="grid grid-cols-[1fr_1fr_1.5fr_1fr] items-center bg-white/50 backdrop-blur-sm rounded-lg p-3 text-sm text-[#2F4F2F]
                        transition-all duration-200 hover:bg-white hover:scale-[1.02] shadow-sm cursor-pointer"
@@ -38,10 +54,7 @@ export default function LastCollectionsCard({ collections }: LastCollectionsProp
             <span className="font-medium text-left">{row.kg}</span>
             <span className="opacity-70 text-center">{row.date}</span>
             
-            <span className={`font-semibold text-center ${
-              row.status === "Cancelado" ? "text-red-600" : 
-              row.status === "Em Andamento" ? "text-blue-600" : "text-green-700"
-            }`}>
+            <span className={`font-semibold text-center ${statusColor(row.status)}`}>
               {row.status}
             </span>
             
@@ -49,9 +62,9 @@ export default function LastCollectionsCard({ collections }: LastCollectionsProp
               {/* Lógica de exibição da última coluna */}
               {row.status === "Concluída" ? (
                 row.rating === null ? (
-                  <button className="text-green-800 font-bold cursor-pointer hover:text-green-600 active:scale-90 transition-transform">
+                  <span className="text-green-800 font-bold">
                     Avalie
-                  </button>
+                  </span>
                 ) : (
                   <div className="flex gap-0.5">
                     {[...Array(5)].map((_, index) => (
@@ -67,7 +80,7 @@ export default function LastCollectionsCard({ collections }: LastCollectionsProp
                 <span className="text-[#2F4F2F]/30">—</span>
               )}
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

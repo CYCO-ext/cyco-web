@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import MainContent from "./components/home/MainContent";
+import { getSessionMeta } from "./lib/createCollection";
 
 export default function WelcomePage() {
   const { data: session, status } = useSession();
@@ -18,7 +19,10 @@ export default function WelcomePage() {
 
   if (status === "loading" || !session) return null;
 
-  console.log("Session:", session);
+  const sessionMeta = getSessionMeta(session);
+  const userType = sessionMeta.role === "WASTE_COLLECTOR" || sessionMeta.role === "CATADOR"
+    ? "WASTE_COLLECTOR"
+    : "GENERATOR";
 
   return (
     <div className="flex flex-col h-screen w-full">
@@ -29,7 +33,11 @@ export default function WelcomePage() {
         </div>
         <div className="flex-1 min-h-0 w-full flex flex-col">
           <div className="flex-1 overflow-y-auto">
-            <MainContent userType={(session as any)?.role === "WASTE_COLLECTOR" ? "WASTE_COLLECTOR" : "GENERATOR"} />
+            <MainContent
+              userType={userType}
+              userId={sessionMeta.generatorId}
+              token={sessionMeta.token}
+            />
           </div>
         </div>
       </div>

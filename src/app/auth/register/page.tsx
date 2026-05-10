@@ -11,6 +11,29 @@ import { RoleCard } from "../../components/roleCard";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
+type RegisterPayload = {
+  email: string;
+  password: string;
+  name: string;
+  birthDate?: string;
+  document: string;
+  phone: {
+    ddd: number;
+    ddi: number;
+    number: number | string;
+  };
+  address: {
+    zipCode?: string;
+    number?: string;
+    complement?: string;
+  };
+  isEnterprise?: boolean;
+  materials?: string[];
+  enterprise?: {
+    companyName?: string;
+  };
+};
+
 export default function RegisterStep1() {
   const router = useRouter();
 
@@ -54,7 +77,7 @@ export default function RegisterStep1() {
   const onSubmit = async (data: RegisterSchemaType) => {
     console.log("Submitting data:", data, { selectedMaterials, isEnterprise });
     try {
-      let payload: any = {};
+      let payload: RegisterPayload | null = null;
 
       if (data.role === "GERADOR") {
         let birthDateFormatted = data.birthDate;
@@ -127,7 +150,7 @@ export default function RegisterStep1() {
 
       alert("Registro realizado com sucesso!");
       router.push("/auth/login");
-    } catch (e) {
+    } catch {
       alert("Erro inesperado ao registrar");
     }
   };

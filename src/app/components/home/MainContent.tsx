@@ -1,39 +1,72 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import CreateCollectionCard from "./cards/CreateCollectionCard";
 import ActiveCollectionsCard from "./cards/ActiveCollectionsCard";
 import EnvironmentalImpactCard from "./cards/EnvironmentalImpactCard";
 import CoinsCard from "./cards/CoinsCard";
-import LastCollectionsCard, { CollectionRow } from "./cards/LastCollectionsCard";
+import LastCollectionsCard from "./cards/LastCollectionsCard";
 import NextCollectionsCard from "./cards/NextCollectionsCard";
+import { CollectionSummary, normalizeCollections } from "@/app/lib/collectionsPage";
+import {
+  buildHomeCollectionQuery,
+  countActiveCollections,
+  HomeUserType,
+  mapCollectionsToLastRows,
+  mapCollectionsToNextViews,
+} from "@/app/lib/homeCollections";
 
-export default function MainContent({ userType }: { userType?: "WASTE_COLLECTOR" | "GENERATOR" }) {
-  const coletasRecentes: CollectionRow[] = [
-    { id: "1", kg: "120Kg", date: "14/09", status: "Concluída", rating: 5 },
-    { id: "2", kg: "85Kg", date: "18/09", status: "Concluída", rating: null },
-    { id: "3", kg: "42Kg", date: "20/09", status: "Em Andamento", rating: null },
-    { id: "4", kg: "15Kg", date: "21/09", status: "Cancelado", rating: null },
-  ];
+interface MainContentProps {
+  userType?: HomeUserType;
+  userId?: string;
+  token?: string;
+}
 
+export default function MainContent({ userType, userId, token }: MainContentProps) {
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [collectionsError, setCollectionsError] = useState(false);
   const materials = [{ name: "Papel", value: 1175, color: "#3B82F6" },
   { name: "Vidro", value: 1175, color: "#166534" }];
 
-  const proximasColetas = [
-    {
-      id: 1,
-      date: new Date(2026, 3, 10, 14, 30),
-      location: "Rua das Flores, 123 - Centro",
-      time: "14:30",
-      weight: "30Kg",
-      materials: ["Papel", "Vidro"]
-    },
-    {
-      id: 2,
-      date: new Date(2026, 3, 12, 9, 0),
-      location: "Av. Brasil, 456 - Bairro Novo",
-      time: "09:00",
-      weight: "12Kg",
-      materials: ["Plástico"]
+  const loadCollections = useCallback(async () => {
+    const query = buildHomeCollectionQuery(userType, userId);
+
+    if (!query) {
+      setCollections([]);
+      setCollectionsError(true);
+      return;
     }
-  ];
+
+    setCollectionsLoading(true);
+    setCollectionsError(false);
+
+    try {
+      const headers: HeadersInit = token ? { authorization: `Bearer ${token}` } : {};
+      const response = await fetch(`/api/collections/search?${query.toString()}`, { headers });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error("Erro ao buscar coletas.");
+      }
+
+      setCollections(normalizeCollections(data));
+    } catch {
+      setCollections([]);
+      setCollectionsError(true);
+    } finally {
+      setCollectionsLoading(false);
+    }
+  }, [token, userId, userType]);
+
+  useEffect(() => {
+    loadCollections();
+  }, [loadCollections]);
+
+  const activeCollectionsCount = useMemo(() => countActiveCollections(collections), [collections]);
+  const nextCollections = useMemo(() => mapCollectionsToNextViews(collections, 2), [collections]);
+  const lastCollections = useMemo(() => mapCollectionsToLastRows(collections, 2), [collections]);
 
   return (
     <main className="w-full h-full bg-[#F5F5F5] p-4 md:p-14">
@@ -41,16 +74,28 @@ export default function MainContent({ userType }: { userType?: "WASTE_COLLECTOR"
         {/* TOP */}
         <div className="flex flex-col gap-4 md:grid md:grid-cols-3 md:gap-10">
           <CreateCollectionCard />
-          <ActiveCollectionsCard />
+          <ActiveCollectionsCard
+            count={activeCollectionsCount}
+            loading={collectionsLoading}
+            error={collectionsError}
+          />
           <EnvironmentalImpactCard total={2350} materials={materials} />
         </div>
         {/* BOTTOM */}
         <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-10">
           <CoinsCard />
           {userType === "WASTE_COLLECTOR" ? (
-            <NextCollectionsCard collections={proximasColetas} />
+            <NextCollectionsCard
+              collections={nextCollections}
+              loading={collectionsLoading}
+              error={collectionsError}
+            />
           ) : (
-            <LastCollectionsCard collections={coletasRecentes} />
+            <LastCollectionsCard
+              collections={lastCollections}
+              loading={collectionsLoading}
+              error={collectionsError}
+            />
           )}
         </div>
       </div>
