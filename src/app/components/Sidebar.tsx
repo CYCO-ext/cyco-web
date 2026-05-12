@@ -1,9 +1,10 @@
-import { Home, Recycle, Gift, Settings, LogOut } from "lucide-react";
+import { Home, Recycle, Gift, Settings, LogOut, Route } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const icons = [
   { icon: <Home size={28} />, label: "Home", path: "/" },
   { icon: <Recycle size={28} />, label: "Coletas", path: "/collections" },
+  { icon: <Route size={28} />, label: "Rotas salvas", path: "/routes/saved" },
   { icon: <Gift size={28} />, label: "CYCO Coins", path: "/coins" },
   { icon: <Settings size={28} />, label: "Configurações", path: "/settings" },
 ];

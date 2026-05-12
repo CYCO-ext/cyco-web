@@ -1,7 +1,7 @@
 # State
 
-**Last Updated:** 2026-05-09T00:00:00-03:00
-**Current Work:** integrate-home - implemented
+**Last Updated:** 2026-05-12T00:00:00-03:00
+**Current Work:** save-route - saved route details refined
 
 ---
 
@@ -84,6 +84,55 @@
 **Trade-off:** Cards derive active counts and first-item previews client-side until the backend exposes dedicated dashboard/count endpoints.
 **Impact:** Implementation should move static home collection arrays into API-backed state in `MainContent`, then pass mapped props to the active, next, and last collection cards.
 
+### AD-012: Route suggestion is collector-only and proxied through Next.js (2026-05-12)
+
+**Decision:** Route suggestion should be a collector-only workflow linked from home, using a local `POST /api/collectors/routes/suggest` route handler that calls `POST ${COLLECTIONS_API_URL}/collectors/routes/suggest`.
+**Reason:** The backend URL should stay server-side, and route planning is not a generator action.
+**Trade-off:** The MVP uses manual start coordinates and text/list route results instead of map/geolocation features.
+**Impact:** Implementation needs a collector home card, `/routes/suggest` page, route suggestion API proxy, candidate selection, form validation, and result rendering.
+
+### AD-013: Route suggestion candidates are in-progress collections only (2026-05-12)
+
+**Decision:** The route suggestion page should load and display only `IN_PROGRESS` collections as candidate stops.
+**Reason:** The route suggestion workflow should plan routes for collections already in progress.
+**Trade-off:** Pending or completed requests are excluded from route planning.
+**Impact:** Candidate loading should call `/api/collections/search?collectorId=<id>&status=IN_PROGRESS`, and UI selection should not expose other statuses.
+
+### AD-014: Route suggestion start uses browser geolocation (2026-05-12)
+
+**Decision:** Route suggestion start coordinates should be captured directly from the collector's browser geolocation and should not be editable form fields.
+**Reason:** The collector's current location should be the route origin, and the user requested latitude/longitude not be input fields.
+**Trade-off:** Route suggestion now depends on browser geolocation permission/support.
+**Impact:** The route suggestion page requests geolocation, shows location state, blocks submit when location is unavailable, and retries location capture on demand.
+
+### AD-015: Route suggestion start supports current or registered location (2026-05-12)
+
+**Decision:** Collectors can choose current browser location or registered collection address as the route suggestion start, while latitude and longitude remain non-editable.
+**Reason:** Route start should support both live operational position and the collector's saved base/location.
+**Trade-off:** Registered location requires address data with coordinates; missing coordinates require fallback to current location or retry.
+**Impact:** The route suggestion page loads collector address coordinates through `/api/collectors/[collectorId]/address`, tracks selected start source, and builds the route payload from the selected source.
+
+### AD-016: Saved routes extend route suggestions (2026-05-12)
+
+**Decision:** Route suggestions should be persisted through a separate save-route feature using `POST ${COLLECTIONS_API_URL}/collectors/routes/save` and reviewed at `/routes/saved`.
+**Reason:** Collectors need to return to generated routes and inspect planned route work.
+**Trade-off:** Saved route lifecycle actions are not part of the current UI.
+**Impact:** Implementation needs save/list route proxies, save UI on `/routes/suggest`, and a collector-only saved routes page.
+
+### AD-017: Saved routes are read-only with expandable vehicle details (2026-05-12)
+
+**Decision:** Remove saved route closing from the UI and show vehicle details through expandable sections on `/routes/saved`.
+**Reason:** Product feedback requested no close button and a clearer way to inspect route details.
+**Trade-off:** Saved route lifecycle changes are not exposed in the frontend.
+**Impact:** `/routes/saved` focuses on route review, and sidebar navigation includes a direct saved routes shortcut.
+
+### AD-018: Saved route stops open collection details (2026-05-12)
+
+**Decision:** Saved route stop rows should display address street/number when available and open collection details through `GET /api/collections/[id]`.
+**Reason:** Collectors need readable stop addresses and a quick way to inspect the collection behind each stop.
+**Trade-off:** Street/number depends on saved route stop data exposing those fields; the collection detail contract currently returns `addressId`, not the full address.
+**Impact:** Implementation added a collection detail proxy, stop-level modal, and route-stop normalization for optional address street/number.
+
 ---
 
 ## Active Blockers
@@ -129,6 +178,15 @@
 | 008 | Disabled finish action after current user confirmation | 2026-05-09 | pending | Done |
 | 009 | Drafted integrate-home feature spec/design/tasks | 2026-05-09 | pending | Done |
 | 010 | Implemented integrate-home collection cards | 2026-05-09 | pending | Done |
+| 011 | Drafted routes feature spec/design/tasks | 2026-05-12 | pending | Done |
+| 012 | Updated routes feature candidates to in-progress only | 2026-05-12 | pending | Done |
+| 013 | Implemented routes feature | 2026-05-12 | pending | Done |
+| 014 | Updated route suggestion start coordinates to browser geolocation | 2026-05-12 | pending | Done |
+| 015 | Added current or registered start location selection for routes | 2026-05-12 | pending | Done |
+| 016 | Drafted save-route feature spec/design/tasks | 2026-05-12 | pending | Done |
+| 017 | Implemented save-route feature | 2026-05-12 | pending | Done |
+| 018 | Refined saved routes navigation and vehicle details | 2026-05-12 | pending | Done |
+| 019 | Added saved route collection detail modal | 2026-05-12 | pending | Done |
 
 ---
 
@@ -151,7 +209,7 @@
 - [ ] Confirm collector response shape from `GET /generators/requests/[id]/collectors`.
 - [ ] Confirm complete collection status enum values.
 - [ ] Confirm whether collectors search by `collectorId` should include only selected requests or also pending opportunities.
-- [ ] Confirm exact response shape from `GET /waste-collector/[id]`.
+- [ ] Confirm exact response shape from `GET /collectors/[collectorId]/address`.
 - [ ] Confirm which collection statuses are eligible for collector quick accept.
 
 ## Preferences

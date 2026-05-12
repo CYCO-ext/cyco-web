@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import CreateCollectionCard from "./cards/CreateCollectionCard";
+import CreateRouteSuggestionCard from "./cards/CreateRouteSuggestionCard";
 import ActiveCollectionsCard from "./cards/ActiveCollectionsCard";
 import EnvironmentalImpactCard from "./cards/EnvironmentalImpactCard";
 import CoinsCard from "./cards/CoinsCard";
@@ -73,7 +74,11 @@ export default function MainContent({ userType, userId, token }: MainContentProp
       <div className="flex flex-col gap-4 md:gap-10">
         {/* TOP */}
         <div className="flex flex-col gap-4 md:grid md:grid-cols-3 md:gap-10">
-          <CreateCollectionCard />
+          {userType === "WASTE_COLLECTOR" ? (
+            <CreateRouteSuggestionCard />
+          ) : (
+            <CreateCollectionCard />
+          )}
           <ActiveCollectionsCard
             count={activeCollectionsCount}
             loading={collectionsLoading}
