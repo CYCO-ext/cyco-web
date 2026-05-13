@@ -38,8 +38,8 @@ export interface SuggestedRouteStop {
   sequence: number;
   collectionRequestId: string;
   addressId: string;
-  addressStreet?: string;
-  addressNumber?: string;
+  street?: string;
+  number?: string;
   latitude: number;
   longitude: number;
   demand: number;
@@ -376,8 +376,8 @@ function normalizeStop(value: unknown): SuggestedRouteStop[] {
     sequence,
     collectionRequestId,
     addressId,
-    addressStreet: stringFrom(value.street) ?? stringFrom(value.addressStreet) ?? stringFrom(address?.street),
-    addressNumber: stringFrom(value.number) ?? stringFrom(value.addressNumber) ?? stringFrom(address?.number),
+    street: stringFrom(value.street) ?? stringFrom(value.street) ?? stringFrom(address?.street),
+    number: stringFrom(value.number) ?? stringFrom(value.number) ?? stringFrom(address?.number),
     latitude,
     longitude,
     demand,

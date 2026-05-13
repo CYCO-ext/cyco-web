@@ -133,6 +133,34 @@
 **Trade-off:** Street/number depends on saved route stop data exposing those fields; the collection detail contract currently returns `addressId`, not the full address.
 **Impact:** Implementation added a collection detail proxy, stop-level modal, and route-stop normalization for optional address street/number.
 
+### AD-019: Collection cards prefer nested address display (2026-05-13)
+
+**Decision:** Collection read views should normalize the new nested `address` object and display formatted address text before falling back to `addressId`.
+**Reason:** The collections API now returns structured address data for get-by-id and search-by-filters responses.
+**Trade-off:** Cards show a concise single-line address instead of exposing all enrichment metadata or map coordinates.
+**Impact:** Shared collection normalization includes optional address fields, `formatCollectionAddress` is reused across home cards, collections cards, and route collection snippets, and get-by-id normalization supports single-object responses.
+
+### AD-020: Collector rejection uses collector request namespace (2026-05-13)
+
+**Decision:** The reject collection action uses local route `POST /api/collectors/requests/[requestId]/reject`, proxying to `${COLLECTIONS_API_URL}/collectors/requests/[requestId]/reject`.
+**Reason:** The requested endpoint is collector-scoped and mirrors the backend accept path already used for collector request actions.
+**Trade-off:** Reject lives outside the existing local `/api/collections/requests/[id]/...` namespace used by accept/finish UI actions.
+**Impact:** `/collections` pending collector cards now show both accept and reject, sharing a per-card pending guard and feedback flow.
+
+### AD-021: Collection cancellation is role-scoped with actor ID body (2026-05-13)
+
+**Decision:** Cancel actions use role-specific local routes and send the authenticated actor ID in the JSON body: collector cancel sends `{ collectorId }` to `/api/collectors/requests/[requestId]/cancel`, and generator cancel sends `{ generatorId }` to `/api/generators/requests/[requestId]/cancel`.
+**Reason:** The backend exposes separate collector and generator cancel endpoints with different required actor ID fields.
+**Trade-off:** The UI handler must branch by viewer role instead of using one generic cancel endpoint.
+**Impact:** `/collections` cards show cancel for `PENDING` and `IN_PROGRESS` requests for both supported roles, sharing the existing per-card pending guard and feedback flow.
+
+### AD-022: Saved route deletion uses 204 no-content semantics (2026-05-13)
+
+**Decision:** Saved route deletion uses local route `DELETE /api/collectors/routes/saved/[savedRouteId]`, proxying to `${COLLECTIONS_API_URL}/collectors/routes/saved/[savedRouteId]`, and treats backend `204 No Content` as success without parsing a body.
+**Reason:** The requested delete endpoint explicitly returns `204 No Content`.
+**Trade-off:** The page removes deleted routes from local state instead of always reloading the full saved-route list.
+**Impact:** `/routes/saved` cards now include a delete action with per-route pending state and success/error feedback.
+
 ---
 
 ## Active Blockers
@@ -187,6 +215,10 @@
 | 017 | Implemented save-route feature | 2026-05-12 | pending | Done |
 | 018 | Refined saved routes navigation and vehicle details | 2026-05-12 | pending | Done |
 | 019 | Added saved route collection detail modal | 2026-05-12 | pending | Done |
+| 020 | Implemented collection address display from nested API responses | 2026-05-13 | pending | Done |
+| 021 | Implemented collector reject action for pending collections | 2026-05-13 | pending | Done |
+| 022 | Implemented role-based cancel action for pending and in-progress collections | 2026-05-13 | pending | Done |
+| 023 | Implemented saved route suggestion deletion | 2026-05-13 | pending | Done |
 
 ---
 

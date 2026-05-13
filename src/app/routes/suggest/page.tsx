@@ -20,6 +20,7 @@ import { button, Input } from "@/app/components/ui";
 import { getSessionMeta } from "@/app/lib/createCollection";
 import {
   CollectionSummary,
+  formatCollectionAddress,
   formatDate,
   formatWeight,
   isCollectorRole,
@@ -85,6 +86,9 @@ function CandidateCard({
           </span>
         </div>
         <p className="mt-1 truncate text-xs text-gray-500">ID: {collection.id}</p>
+        <p className="mt-1 truncate text-xs font-medium text-cyco-green">
+          {formatCollectionAddress(collection)}
+        </p>
 
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
           <span>{formatWeight(collection.weight)}</span>
@@ -102,6 +106,15 @@ function CandidateCard({
       </div>
     </label>
   );
+}
+
+function formatStopAddress(stop: SuggestedRoute["stops"][number]): string {
+  if (stop.street?.trim()) {
+    const number = stop.number?.trim() ? `, ${stop.number}` : "";
+    return `${stop.street}${number}`;
+  }
+
+  return `Endereço ${stop.addressId.slice(0, 16)}`;
 }
 
 function RouteResult({
@@ -215,7 +228,7 @@ function VehicleRouteCard({ route }: { route: SuggestedRoute }) {
               <div>
                 <div className="font-semibold text-gray-900">Parada {stop.sequence}</div>
                 <div className="text-xs text-gray-500">Coleta: {stop.collectionRequestId}</div>
-                <div className="text-xs text-gray-500">Endereço: {stop.addressId.slice(0, 16)}</div>
+                <div className="text-xs text-gray-500">Endereço: {formatStopAddress(stop)}</div>
               </div>
               <div className="grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
                 <span>Demanda: {formatRouteLoad(stop.demand)}</span>

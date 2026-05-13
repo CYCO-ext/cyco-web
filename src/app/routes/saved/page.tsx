@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   AlertCircle,
+  CheckCircle2,
   ChevronDown,
   Eye,
   X,
@@ -13,6 +14,7 @@ import {
   RotateCcw,
   Route,
   Truck,
+  Trash2,
 } from "lucide-react";
 
 import Header from "@/app/components/Header";
@@ -20,6 +22,7 @@ import Sidebar from "@/app/components/Sidebar";
 import { button } from "@/app/components/ui";
 import {
   CollectionSummary,
+  formatCollectionAddress,
   formatDate,
   formatWeight,
   isCollectorRole,
@@ -35,6 +38,11 @@ import {
 } from "@/app/lib/routes";
 
 type PageError = {
+  message: string;
+};
+
+type DeleteRouteFeedback = {
+  type: "success" | "error";
   message: string;
 };
 
@@ -69,9 +77,9 @@ function formatDateTime(value: string | null): string {
 }
 
 function formatStopAddress(stop: SuggestedRouteStop): string {
-  if (stop.addressStreet?.trim()) {
-    const number = stop.addressNumber?.trim() ? `, ${stop.addressNumber}` : "";
-    return `${stop.addressStreet}${number}`;
+  if (stop.street?.trim()) {
+    const number = stop.number?.trim() ? `, ${stop.number}` : "";
+    return `${stop.street}${number}`;
   }
 
   return "Endereço não informado";
@@ -145,6 +153,13 @@ function CollectionDetailsModal({
               </div>
             </div>
 
+            <div className="rounded-xl border border-cyco-light bg-cyco-light/40 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">Endereço da coleta</h3>
+              <p className="mt-1 break-words text-sm text-gray-700">
+                {formatCollectionAddress(state.collection)}
+              </p>
+            </div>
+
             <div className="rounded-xl border border-gray-100 p-4">
               <h3 className="text-sm font-semibold text-gray-900">Materiais</h3>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -163,7 +178,7 @@ function CollectionDetailsModal({
             <div className="grid gap-2 text-xs text-gray-500">
               <span>ID: {state.collection.id}</span>
               <span>Gerador: {state.collection.generatorId}</span>
-              {state.collection.addressId && <span>Endereço: {state.collection.addressId}</span>}
+              {state.collection.addressId && <span>ID do endereço: {state.collection.addressId}</span>}
               {state.collection.selectedCollectorId && <span>Coletor: {state.collection.selectedCollectorId}</span>}
               <span>Gerador confirmou: {state.collection.generatorConfirmed ? "Sim" : "Não"}</span>
               <span>Coletor confirmou: {state.collection.collectorConfirmed ? "Sim" : "Não"}</span>
@@ -177,9 +192,13 @@ function CollectionDetailsModal({
 
 function SavedRouteCard({
   route,
+  deletePending,
+  onDelete,
   onOpenCollection,
 }: {
   route: SavedRoute;
+  deletePending: boolean;
+  onDelete: (id: string) => void;
   onOpenCollection: (id: string) => void;
 }) {
   const isOpen = route.status === "OPEN";
@@ -204,6 +223,20 @@ function SavedRouteCard({
             <p className="mt-1 truncate text-xs text-gray-500">Fingerprint: {route.fingerprint}</p>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={() => onDelete(route.id)}
+          disabled={deletePending}
+          className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-red-700 bg-white px-4 py-2 text-sm font-semibold text-red-800 shadow-sm hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {deletePending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+          {deletePending ? "Excluindo..." : "Excluir"}
+        </button>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -350,6 +383,8 @@ export default function SavedRoutesPage() {
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PageError>();
+  const [deletePendingId, setDeletePendingId] = useState<string>();
+  const [deleteFeedback, setDeleteFeedback] = useState<DeleteRouteFeedback>();
   const [collectionModal, setCollectionModal] = useState<CollectionModalState>({ status: "idle" });
 
   const headers = useMemo((): HeadersInit => (
@@ -395,6 +430,36 @@ export default function SavedRoutesPage() {
     loadSavedRoutes();
   }, [isCollector, loadSavedRoutes, status]);
 
+  async function deleteSavedRoute(savedRouteId: string) {
+    setDeletePendingId(savedRouteId);
+    setDeleteFeedback(undefined);
+
+    try {
+      const res = await fetch(`/api/collectors/routes/saved/${savedRouteId}`, {
+        method: "DELETE",
+        headers,
+      });
+      const data = res.status === 204 ? null : await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao excluir rota salva."));
+      }
+
+      setRoutes((current) => current.filter((route) => route.id !== savedRouteId));
+      setDeleteFeedback({
+        type: "success",
+        message: "Rota salva excluída com sucesso.",
+      });
+    } catch (err) {
+      setDeleteFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Erro ao excluir rota salva.",
+      });
+    } finally {
+      setDeletePendingId(undefined);
+    }
+  }
+
   async function openCollectionDetails(collectionId: string) {
     setCollectionModal({ status: "loading", collectionId });
 
@@ -406,7 +471,7 @@ export default function SavedRoutesPage() {
         throw new Error(getApiError(data, "Erro ao buscar dados da coleta."));
       }
 
-      const collection = normalizeCollections([data])[0];
+      const collection = normalizeCollections(data)[0];
       if (!collection) {
         throw new Error("Dados da coleta inválidos.");
       }
@@ -479,6 +544,23 @@ export default function SavedRoutesPage() {
                   </section>
                 )}
 
+                {deleteFeedback && (
+                  <section
+                    className={`flex items-start gap-2 rounded-2xl border p-5 text-sm ${
+                      deleteFeedback.type === "success"
+                        ? "border-green-100 bg-green-50 text-green-700"
+                        : "border-red-100 bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {deleteFeedback.type === "success" ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    {deleteFeedback.message}
+                  </section>
+                )}
+
                 {loading ? (
                   <section className="flex items-center gap-2 rounded-2xl bg-white p-5 text-sm text-gray-600 shadow-sm">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -494,6 +576,8 @@ export default function SavedRoutesPage() {
                       <SavedRouteCard
                         key={route.id}
                         route={route}
+                        deletePending={deletePendingId === route.id}
+                        onDelete={deleteSavedRoute}
                         onOpenCollection={openCollectionDetails}
                       />
                     ))}

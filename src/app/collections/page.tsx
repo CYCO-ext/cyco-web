@@ -33,6 +33,7 @@ import {
   normalizeCounterpartProfile,
   CounterpartProfile,
   ViewerRole,
+  formatCollectionAddress,
   statusLabel,
 } from "@/app/lib/collectionsPage";
 
@@ -47,6 +48,8 @@ type ActionFeedback = {
 type PageError = {
   message: string;
 };
+
+type CollectionActionKind = "accept" | "reject" | "finish" | "cancel";
 
 function getApiError(data: unknown, fallback: string): string {
   if (typeof data === "object" && data !== null && "error" in data) {
@@ -90,8 +93,16 @@ function isAcceptEligible(collection: CollectionSummary): boolean {
   return collection.status === "PENDING";
 }
 
+function isRejectEligible(collection: CollectionSummary): boolean {
+  return collection.status === "PENDING";
+}
+
 function isFinishEligible(collection: CollectionSummary): boolean {
   return collection.status === "IN_PROGRESS";
+}
+
+function isCancelEligible(collection: CollectionSummary): boolean {
+  return ["PENDING", "IN_PROGRESS"].includes(collection.status);
 }
 
 function hasViewerConfirmed(collection: CollectionSummary, viewerRole?: ViewerRole): boolean {
@@ -186,27 +197,39 @@ function CollectionCard({
   viewerRole,
   profileLoading,
   actionPending,
+  actionPendingKind,
   feedback,
   onAccept,
+  onReject,
   onFinish,
+  onCancel,
 }: {
   collection: CollectionSummary;
   counterpart?: CounterpartProfile;
   viewerRole?: ViewerRole;
   profileLoading: boolean;
   actionPending: boolean;
+  actionPendingKind?: CollectionActionKind;
   feedback?: ActionFeedback;
   onAccept: (collectionId: string) => void;
+  onReject: (collectionId: string) => void;
   onFinish: (collectionId: string) => void;
+  onCancel: (collectionId: string) => void;
 }) {
   const showAccept = viewerRole === "WASTE_COLLECTOR" && isAcceptEligible(collection);
+  const showReject = viewerRole === "WASTE_COLLECTOR" && isRejectEligible(collection);
   const showFinish = !!viewerRole && isFinishEligible(collection);
+  const showCancel = !!viewerRole && isCancelEligible(collection);
   const viewerConfirmed = hasViewerConfirmed(collection, viewerRole);
   const actionCopy = showFinish
     ? viewerConfirmed
       ? "Você já confirmou a finalização desta coleta."
       : "Confirme a finalização desta coleta."
-    : "Aceite rápido disponível para coletores.";
+    : showAccept
+      ? "Aceite, rejeite ou cancele esta solicitação."
+      : showCancel
+        ? "Cancele esta coleta se ela não deve continuar."
+        : "Acompanhe o status desta coleta.";
 
   return (
     <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -240,6 +263,13 @@ function CollectionCard({
         <div>Atualizada em: {formatDate(collection.updatedAt)}</div>
       </div>
 
+      <div className="mt-4 rounded-xl border border-cyco-light bg-cyco-light/40 p-3">
+        <div className="text-xs font-medium uppercase tracking-wide text-cyco-green">Endereço da coleta</div>
+        <div className="mt-1 break-words text-sm font-semibold text-gray-800">
+          {formatCollectionAddress(collection)}
+        </div>
+      </div>
+
       <div className="mt-4">
         <CounterpartDetails
           collection={collection}
@@ -265,7 +295,7 @@ function CollectionCard({
         <ConfirmationFlag label="Coletor" confirmed={collection.collectorConfirmed} />
       </div>
 
-      {(showAccept || showFinish || feedback) && (
+      {(showAccept || showReject || showFinish || showCancel || feedback) && (
         <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
           {feedback ? (
             <span
@@ -280,14 +310,27 @@ function CollectionCard({
           )}
 
           {showAccept && (
-            <button
-              type="button"
-              onClick={() => onAccept(collection.id)}
-              disabled={actionPending}
-              className={`${button()} min-w-32 disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              {actionPending ? "Aceitando..." : "Aceitar coleta"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onAccept(collection.id)}
+                disabled={actionPending}
+                className={`${button()} min-w-32 disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                {actionPending && actionPendingKind === "accept" ? "Aceitando..." : "Aceitar coleta"}
+              </button>
+
+              {showReject && (
+                <button
+                  type="button"
+                  onClick={() => onReject(collection.id)}
+                  disabled={actionPending}
+                  className="inline-flex min-w-28 items-center justify-center rounded-xl border border-red-700 bg-white px-4 py-2 font-semibold text-red-800 shadow-sm hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {actionPending && actionPendingKind === "reject" ? "Rejeitando..." : "Rejeitar"}
+                </button>
+              )}
+            </div>
           )}
 
           {showFinish && (
@@ -297,7 +340,22 @@ function CollectionCard({
               disabled={actionPending || viewerConfirmed}
               className={`${button()} min-w-32 disabled:cursor-not-allowed disabled:opacity-60`}
             >
-              {actionPending ? "Finalizando..." : viewerConfirmed ? "Finalização confirmada" : "Finalizar coleta"}
+              {actionPending && actionPendingKind === "finish"
+                ? "Finalizando..."
+                : viewerConfirmed
+                  ? "Finalização confirmada"
+                  : "Finalizar coleta"}
+            </button>
+          )}
+
+          {showCancel && (
+            <button
+              type="button"
+              onClick={() => onCancel(collection.id)}
+              disabled={actionPending}
+              className="inline-flex min-w-28 items-center justify-center rounded-xl border border-red-700 bg-white px-4 py-2 font-semibold text-red-800 shadow-sm hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionPending && actionPendingKind === "cancel" ? "Cancelando..." : "Cancelar"}
             </button>
           )}
         </div>
@@ -315,6 +373,7 @@ export default function CollectionsPage() {
   const [counterpartProfiles, setCounterpartProfiles] = useState<CounterpartProfiles>({});
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [actionPendingId, setActionPendingId] = useState<string>();
+  const [actionPendingKind, setActionPendingKind] = useState<CollectionActionKind>();
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PageError>();
@@ -424,6 +483,7 @@ export default function CollectionsPage() {
 
   const handleAccept = useCallback(async (collectionId: string) => {
     setActionPendingId(collectionId);
+    setActionPendingKind("accept");
     setActionFeedback(undefined);
 
     try {
@@ -454,13 +514,108 @@ export default function CollectionsPage() {
       });
     } finally {
       setActionPendingId(undefined);
+      setActionPendingKind(undefined);
     }
   }, [loadCollections, sessionMeta.token]);
+
+  const handleReject = useCallback(async (collectionId: string) => {
+    setActionPendingId(collectionId);
+    setActionPendingKind("reject");
+    setActionFeedback(undefined);
+
+    try {
+      const headers: HeadersInit = sessionMeta.token
+        ? { authorization: `Bearer ${sessionMeta.token}` }
+        : {};
+      const res = await fetch(`/api/collectors/requests/${collectionId}/reject`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao rejeitar coleta."));
+      }
+
+      setActionFeedback({
+        collectionId,
+        type: "success",
+        message: "Coleta rejeitada com sucesso.",
+      });
+      await loadCollections();
+    } catch (rejectError) {
+      setActionFeedback({
+        collectionId,
+        type: "error",
+        message: rejectError instanceof Error ? rejectError.message : "Erro ao rejeitar coleta.",
+      });
+    } finally {
+      setActionPendingId(undefined);
+      setActionPendingKind(undefined);
+    }
+  }, [loadCollections, sessionMeta.token]);
+
+  const handleCancel = useCallback(async (collectionId: string) => {
+    if (!viewerRole || !sessionMeta.generatorId) {
+      setActionFeedback({
+        collectionId,
+        type: "error",
+        message: "Não foi possível identificar o usuário autenticado.",
+      });
+      return;
+    }
+
+    setActionPendingId(collectionId);
+    setActionPendingKind("cancel");
+    setActionFeedback(undefined);
+
+    const isCollector = viewerRole === "WASTE_COLLECTOR";
+    const endpoint = isCollector
+      ? `/api/collectors/requests/${collectionId}/cancel`
+      : `/api/generators/requests/${collectionId}/cancel`;
+    const payload = isCollector
+      ? { collectorId: sessionMeta.generatorId }
+      : { generatorId: sessionMeta.generatorId };
+
+    try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}),
+      };
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao cancelar coleta."));
+      }
+
+      setActionFeedback({
+        collectionId,
+        type: "success",
+        message: "Coleta cancelada com sucesso.",
+      });
+      await loadCollections();
+    } catch (cancelError) {
+      setActionFeedback({
+        collectionId,
+        type: "error",
+        message: cancelError instanceof Error ? cancelError.message : "Erro ao cancelar coleta.",
+      });
+    } finally {
+      setActionPendingId(undefined);
+      setActionPendingKind(undefined);
+    }
+  }, [loadCollections, sessionMeta.generatorId, sessionMeta.token, viewerRole]);
 
   const handleFinish = useCallback(async (collectionId: string) => {
     if (!viewerRole) return;
 
     setActionPendingId(collectionId);
+    setActionPendingKind("finish");
     setActionFeedback(undefined);
 
     const endpoint = viewerRole === "GENERATOR"
@@ -498,6 +653,7 @@ export default function CollectionsPage() {
       });
     } finally {
       setActionPendingId(undefined);
+      setActionPendingKind(undefined);
     }
   }, [loadCollections, sessionMeta.token, viewerRole]);
 
@@ -604,9 +760,12 @@ export default function CollectionsPage() {
                       viewerRole={viewerRole}
                       profileLoading={profilesLoading}
                       actionPending={actionPendingId === collection.id}
+                      actionPendingKind={actionPendingId === collection.id ? actionPendingKind : undefined}
                       feedback={actionFeedback?.collectionId === collection.id ? actionFeedback : undefined}
                       onAccept={handleAccept}
+                      onReject={handleReject}
                       onFinish={handleFinish}
+                      onCancel={handleCancel}
                     />
                   );
                 })}

@@ -1,6 +1,7 @@
 import {
   CollectionSummary,
   CollectionStatus,
+  formatCollectionAddress,
   formatWeight,
   statusLabel,
 } from "@/app/lib/collectionsPage";
@@ -20,6 +21,7 @@ export interface LastCollectionRowView {
   id: string;
   kg: string;
   date: string;
+  location: string;
   status: string;
   rating: number | null;
 }
@@ -37,13 +39,13 @@ export function countActiveCollections(collections: CollectionSummary[]): number
 }
 
 export function mapCollectionsToNextViews(collections: CollectionSummary[], limit = 2): NextCollectionView[] {
-  return collections.slice(0, limit).map((collection) => {
+  return collections.filter((collection) => collection.status === "IN_PROGRESS").slice(0, limit).map((collection) => {
     const date = collectionDate(collection);
 
     return {
       id: collection.id,
       date,
-      location: collectionLocation(collection),
+      location: formatCollectionAddress(collection),
       time: formatTime(date),
       weight: formatWeight(collection.weight),
       materials: collection.materialIds.length ? collection.materialIds : ["Sem materiais"],
@@ -56,6 +58,7 @@ export function mapCollectionsToLastRows(collections: CollectionSummary[], limit
     id: collection.id,
     kg: formatWeight(collection.weight),
     date: formatCompactDate(collectionDate(collection)),
+    location: formatCollectionAddress(collection),
     status: statusLabel(collection.status as CollectionStatus),
     rating: null,
   }));
@@ -65,11 +68,6 @@ function collectionDate(collection: CollectionSummary): Date {
   const rawDate = collection.updatedAt || collection.createdAt;
   const date = new Date(rawDate);
   return Number.isNaN(date.getTime()) ? new Date(collection.createdAt) : date;
-}
-
-function collectionLocation(collection: CollectionSummary): string {
-  if (collection.addressId) return `Endereço ${collection.addressId.slice(0, 8)}`;
-  return `Coleta #${collection.id.slice(0, 8)}`;
 }
 
 function formatTime(date: Date): string {

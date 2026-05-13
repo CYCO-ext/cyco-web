@@ -5,10 +5,24 @@ export type CollectionStatus =
   | "CANCELED"
   | string;
 
+export interface CollectionAddress {
+  id?: string;
+  street?: string;
+  number?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  latitude?: number;
+  longitude?: number;
+  enrichmentStatus?: string;
+  enrichmentSource?: string;
+}
+
 export interface CollectionSummary {
   id: string;
   generatorId: string;
   addressId?: string;
+  address?: CollectionAddress;
   materialIds: string[];
   weight: number;
   status: CollectionStatus;
@@ -131,6 +145,25 @@ function normalizeAddresses(value: unknown): CounterpartProfile["address"] {
   return addresses.length ? addresses : undefined;
 }
 
+function normalizeCollectionAddress(value: unknown): CollectionAddress | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const address: CollectionAddress = {
+    id: stringFrom(value.id),
+    street: stringFrom(value.street),
+    number: stringFrom(value.number),
+    city: stringFrom(value.city),
+    state: stringFrom(value.state),
+    zipCode: stringFrom(value.zipCode),
+    latitude: numberFieldFrom(value.latitude),
+    longitude: numberFieldFrom(value.longitude),
+    enrichmentStatus: stringFrom(value.enrichmentStatus),
+    enrichmentSource: stringFrom(value.enrichmentSource),
+  };
+
+  return Object.values(address).some((field) => field !== undefined) ? address : undefined;
+}
+
 export function normalizeCollections(response: unknown): CollectionSummary[] {
   const rawList = Array.isArray(response)
     ? response
@@ -138,7 +171,9 @@ export function normalizeCollections(response: unknown): CollectionSummary[] {
       ? response.data
       : isRecord(response) && Array.isArray(response.collections)
         ? response.collections
-        : [];
+        : isRecord(response)
+          ? [response]
+          : [];
 
   return rawList.flatMap((item) => {
     if (!isRecord(item)) return [];
@@ -158,6 +193,7 @@ export function normalizeCollections(response: unknown): CollectionSummary[] {
       id,
       generatorId,
       addressId: stringFrom(item.addressId),
+      address: normalizeCollectionAddress(item.address),
       materialIds: stringArrayFrom(item.materialIds),
       weight,
       status,
@@ -250,6 +286,22 @@ export function counterpartProfileMapKey(kind: CounterpartKind, id: string): str
 
 export function formatWeight(weight: number): string {
   return `${weight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`;
+}
+
+export function formatCollectionAddress(collection: CollectionSummary): string {
+  const address = collection.address;
+
+  if (address) {
+    const streetLine = [address.street, address.number].filter(Boolean).join(", ");
+    const cityState = [address.city, address.state].filter(Boolean).join("/");
+    const zipCode = address.zipCode ? `CEP ${address.zipCode}` : undefined;
+    const parts = [streetLine, cityState, zipCode].filter(Boolean);
+
+    if (parts.length) return parts.join(" - ");
+  }
+
+  if (collection.addressId) return `Endereço ${collection.addressId.slice(0, 8)}`;
+  return `Coleta #${collection.id.slice(0, 8)}`;
 }
 
 export function formatDate(value: string): string {

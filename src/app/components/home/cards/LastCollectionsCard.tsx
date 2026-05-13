@@ -48,18 +48,22 @@ export default function LastCollectionsCard({ collections, loading, error }: Las
           <Link
             href="/collections"
             key={row.id}
-            className="grid grid-cols-[1fr_1fr_1.5fr_1fr] items-center bg-white/50 backdrop-blur-sm rounded-lg p-3 text-sm text-[#2F4F2F]
+            className="grid grid-cols-[auto_1fr_auto] gap-3 items-center bg-white/50 backdrop-blur-sm rounded-lg p-3 text-sm text-[#2F4F2F]
                        transition-all duration-200 hover:bg-white hover:scale-[1.02] shadow-sm cursor-pointer"
           >
-            <span className="font-medium text-left">{row.kg}</span>
-            <span className="opacity-70 text-center">{row.date}</span>
-            
-            <span className={`font-semibold text-center ${statusColor(row.status)}`}>
-              {row.status}
-            </span>
+            <div className="min-w-[4.5rem]">
+              <div className="font-medium text-left">{row.kg}</div>
+              <div className="opacity-70 text-xs">{row.date}</div>
+            </div>
+
+            <div className="min-w-0">
+              <div className="truncate text-xs text-[#2F4F2F]/70">{row.location}</div>
+              <div className={`font-semibold ${statusColor(row.status)}`}>
+                {row.status}
+              </div>
+            </div>
             
             <div className="justify-self-end">
-              {/* Lógica de exibição da última coluna */}
               {row.status === "Concluída" ? (
                 row.rating === null ? (
                   <span className="text-green-800 font-bold">
