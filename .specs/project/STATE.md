@@ -161,6 +161,13 @@
 **Trade-off:** The page removes deleted routes from local state instead of always reloading the full saved-route list.
 **Impact:** `/routes/saved` cards now include a delete action with per-route pending state and success/error feedback.
 
+### AD-023: User profile uses role-specific profile proxies (2026-05-14)
+
+**Decision:** The read-only profile page uses the authenticated session ID and role to fetch full profile data from existing local proxies: generators use `/api/generator/[id]`, and collectors use `/api/waste-collector/[id]`.
+**Reason:** The backend profile data is already exposed through role-specific endpoints and local proxy routes.
+**Trade-off:** The page branches by role rather than relying on a unified profile endpoint.
+**Impact:** `/profile` now renders normalized identity, contact, enterprise, collector materials, address, and additional scalar details, and profile navigation is available from the header avatar and sidebar.
+
 ---
 
 ## Active Blockers
@@ -219,6 +226,8 @@
 | 021 | Implemented collector reject action for pending collections | 2026-05-13 | pending | Done |
 | 022 | Implemented role-based cancel action for pending and in-progress collections | 2026-05-13 | pending | Done |
 | 023 | Implemented saved route suggestion deletion | 2026-05-13 | pending | Done |
+| 024 | Implemented read-only user profile page | 2026-05-14 | pending | Done |
+| 025 | Added collector materials to the user profile page | 2026-05-14 | pending | Done |
 
 ---
 

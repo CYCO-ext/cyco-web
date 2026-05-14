@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 interface HeaderProps {
   centerText?: string;
@@ -37,7 +38,7 @@ export default function Header({ centerText }: HeaderProps) {
           </span>
         )}
       </div>
-      <div>
+      <Link href="/profile" aria-label="Abrir perfil">
         <Image
           src="/Profile.png"
           alt="User"
@@ -45,7 +46,7 @@ export default function Header({ centerText }: HeaderProps) {
           height={40}
           className="rounded-full border-2 border-cyco-green object-cover md:w-[57px] md:h-[57px] w-[40px] h-[40px]"
         />
-      </div>
+      </Link>
     </header>
   );
 }
