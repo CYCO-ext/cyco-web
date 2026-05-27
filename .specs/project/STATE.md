@@ -1,7 +1,7 @@
 # State
 
-**Last Updated:** 2026-05-12T00:00:00-03:00
-**Current Work:** save-route - saved route details refined
+**Last Updated:** 2026-05-27T00:00:00-03:00
+**Current Work:** route-map - implemented and awaiting live browser UAT
 
 ---
 
@@ -168,6 +168,27 @@
 **Trade-off:** The page branches by role rather than relying on a unified profile endpoint.
 **Impact:** `/profile` now renders normalized identity, contact, enterprise, collector materials, address, and additional scalar details, and profile navigation is available from the header avatar and sidebar.
 
+### AD-024: Saved route request moves use persisted backend updates (2026-05-15)
+
+**Decision:** Moving a collection request between saved-route vehicles uses local route `POST /api/collectors/routes/saved/[savedRouteId]/move-request`, proxying to `${COLLECTIONS_API_URL}/collectors/routes/saved/[savedRouteId]/move-request`, and the UI replaces the route with the normalized backend response after success.
+**Reason:** The backend owns saved-route assignment state and returns the updated route after a move.
+**Trade-off:** The UI waits for backend success instead of optimistically reshaping vehicle stops locally.
+**Impact:** `/routes/saved` now exposes native drag/drop and target-vehicle selector controls for `OPEN` saved routes, disables conflicting actions while a move is pending, and preserves current state on move failure.
+
+### AD-025: Route suggestion request uses vehicles, filters, and solver options (2026-05-15)
+
+**Decision:** Route suggestion payloads now send `vehicles[]`, `start.addressId`, `endAtStart`, `filters`, and expanded `options` instead of the old flat `vehicleCount`/`vehicleCapacity` contract.
+**Reason:** The route suggestion API contract changed to accept per-vehicle capacities and solver/filter options.
+**Trade-off:** Solver/filter tuning stays mostly static in the UI, while vehicle capacity is now editable per vehicle.
+**Impact:** `/routes/suggest` now submits material filters derived from selected collections, static max distance/drop penalty/distance unit/time limit defaults, return-to-start, and per-vehicle capacity values through the existing local proxy.
+
+### AD-026: Saved route maps use Leaflet through a local proxy (2026-05-27)
+
+**Decision:** Saved route maps open at `/routes/saved/[savedRouteId]/map`, fetch GeoJSON through `GET /api/collectors/routes/saved/[savedRouteId]/map?vehicleIndex=<index>`, and render route lines with Leaflet/react-leaflet in a client-only component.
+**Reason:** The backend map endpoint returns provider GeoJSON per saved route and vehicle, and backend URLs/auth should remain behind Next.js route handlers.
+**Trade-off:** The first implementation uses online OpenStreetMap tiles and requires browser UAT for visual tile/line verification.
+**Impact:** Route map helpers normalize GeoJSON defensively, saved route cards link to the map page, the map page supports vehicle selection and metadata, and final verification should include a live backend map response.
+
 ---
 
 ## Active Blockers
@@ -228,6 +249,9 @@
 | 023 | Implemented saved route suggestion deletion | 2026-05-13 | pending | Done |
 | 024 | Implemented read-only user profile page | 2026-05-14 | pending | Done |
 | 025 | Added collector materials to the user profile page | 2026-05-14 | pending | Done |
+| 026 | Implemented saved route move request between vehicles | 2026-05-15 | pending | Done |
+| 027 | Updated route suggestion request body contract | 2026-05-15 | pending | Done |
+| 028 | Simplified route suggestion options and added per-vehicle capacities | 2026-05-15 | pending | Done |
 
 ---
 

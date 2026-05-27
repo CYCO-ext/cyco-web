@@ -192,14 +192,14 @@ T4 + T7 -> T8
 **Done when**:
 
 - [x] Collector can select one or more candidate requests.
-- [x] Vehicle count and capacity inputs are present and validated.
+- [x] Vehicle count and per-vehicle capacity inputs are present and validated.
 - [x] Collector can choose current location or registered location.
 - [x] Latitude and longitude are captured from browser geolocation or registered collection address coordinates and validated.
 - [x] Registered address uses `GET ${COLLECTIONS_API_URL}/collectors/[collectorId]/address` through a local API route.
 - [x] Latitude and longitude are not editable fields.
 - [x] Geolocation errors show a retry/error state.
 - [x] Registered location errors show a retry/error state.
-- [x] Default options are `timeLimitSeconds=5` and `allowDroppingStops=true`.
+- [x] Static defaults are `timeLimitSeconds=5`, `maxDistanceKmFromStart=50`, `dropPenalty=100000`, and `distanceUnit=METERS`; `allowDroppingStops` remains configurable.
 - [x] Submit posts to `/api/collectors/routes/suggest`.
 - [x] Submit forwards the session token when present.
 - [x] Submit keeps form data on backend error.

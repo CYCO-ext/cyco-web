@@ -410,6 +410,35 @@ export default function SuggestRoutePage() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function updateVehicleCount(value: string) {
+    const parsed = Number(value);
+
+    setForm((current) => {
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        return { ...current, vehicleCount: value };
+      }
+
+      const nextCapacities = Array.from({ length: parsed }, (_, index) => (
+        current.vehicleCapacities[index] ?? current.vehicleCapacities.at(-1) ?? "100"
+      ));
+
+      return {
+        ...current,
+        vehicleCount: value,
+        vehicleCapacities: nextCapacities,
+      };
+    });
+  }
+
+  function updateVehicleCapacity(index: number, value: string) {
+    setForm((current) => ({
+      ...current,
+      vehicleCapacities: current.vehicleCapacities.map((capacity, capacityIndex) => (
+        capacityIndex === index ? value : capacity
+      )),
+    }));
+  }
+
   function toggleCandidate(id: string) {
     setForm((current) => ({
       ...current,
@@ -418,6 +447,14 @@ export default function SuggestRoutePage() {
         : [...current.selectedRequestIds, id],
     }));
   }
+
+  const selectedMaterialIds = useMemo(() => (
+    Array.from(new Set(
+      candidates
+        .filter((collection) => form.selectedRequestIds.includes(collection.id))
+        .flatMap((collection) => collection.materialIds),
+    ))
+  ), [candidates, form.selectedRequestIds]);
 
   function selectStartLocation(source: RouteSuggestionFormState["startLocationSource"]) {
     setSubmitError(undefined);
@@ -452,7 +489,7 @@ export default function SuggestRoutePage() {
     event.preventDefault();
     setSubmitError(undefined);
 
-    const { payload, error } = buildRouteSuggestionRequest(form, sessionMeta.generatorId);
+    const { payload, error } = buildRouteSuggestionRequest(form, sessionMeta.generatorId, selectedMaterialIds);
     if (error || !payload) {
       setSubmitError({ message: error ?? "Confira os dados da rota." });
       return;
@@ -628,19 +665,34 @@ export default function SuggestRoutePage() {
                           min={1}
                           step={1}
                           value={form.vehicleCount}
-                          onChange={(event) => updateForm("vehicleCount", event.target.value)}
+                          onChange={(event) => updateVehicleCount(event.target.value)}
                         />
                       </label>
 
-                      <label className="grid gap-1 text-sm text-gray-700">
-                        Capacidade por veículo
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.1"
-                          value={form.vehicleCapacity}
-                          onChange={(event) => updateForm("vehicleCapacity", event.target.value)}
+                      <div className="grid gap-3">
+                        <div className="text-sm font-medium text-gray-700">Capacidade dos veículos</div>
+                        {form.vehicleCapacities.map((capacity, index) => (
+                          <label key={`vehicle-capacity-${index}`} className="grid gap-1 text-sm text-gray-700">
+                            Veículo {index + 1}
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.1"
+                              value={capacity}
+                              onChange={(event) => updateVehicleCapacity(index, event.target.value)}
+                            />
+                          </label>
+                        ))}
+                      </div>
+
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={form.endAtStart}
+                          onChange={(event) => updateForm("endAtStart", event.target.checked)}
+                          className="h-4 w-4 accent-cyco-green"
                         />
+                        Retornar ao ponto inicial
                       </label>
 
                       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -749,17 +801,6 @@ export default function SuggestRoutePage() {
                         )}
                       </div>
 
-                      <label className="grid gap-1 text-sm text-gray-700">
-                        Limite de tempo (segundos)
-                        <Input
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={form.timeLimitSeconds}
-                          onChange={(event) => updateForm("timeLimitSeconds", event.target.value)}
-                        />
-                      </label>
-
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input
                           type="checkbox"
@@ -769,6 +810,19 @@ export default function SuggestRoutePage() {
                         />
                         Permitir remover paradas inviáveis
                       </label>
+
+                      {selectedMaterialIds.length > 0 && (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                          <div className="text-xs font-medium uppercase text-gray-400">Materiais filtrados</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedMaterialIds.map((material) => (
+                              <span key={material} className="rounded-full bg-white px-2 py-0.5 text-xs text-cyco-green">
+                                {material}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {submitError && (
                         <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">

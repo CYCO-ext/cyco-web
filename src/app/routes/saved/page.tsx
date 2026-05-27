@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -8,13 +10,16 @@ import {
   CheckCircle2,
   ChevronDown,
   Eye,
-  X,
+  GripVertical,
   Loader2,
+  Map,
   MapPin,
+  MoveRight,
   RotateCcw,
   Route,
   Truck,
   Trash2,
+  X,
 } from "lucide-react";
 
 import Header from "@/app/components/Header";
@@ -31,7 +36,9 @@ import {
 } from "@/app/lib/collectionsPage";
 import { getSessionMeta } from "@/app/lib/createCollection";
 import {
+  buildMoveSavedRouteRequest,
   formatDistanceMeters,
+  normalizeSavedRoute,
   normalizeSavedRoutes,
   SavedRoute,
   SuggestedRouteStop,
@@ -44,6 +51,22 @@ type PageError = {
 type DeleteRouteFeedback = {
   type: "success" | "error";
   message: string;
+};
+
+type MoveRouteFeedback = {
+  type: "success" | "error";
+  message: string;
+};
+
+type DraggedStop = {
+  savedRouteId: string;
+  collectionRequestId: string;
+  sourceVehicleIndex: number;
+};
+
+type DropTarget = {
+  savedRouteId: string;
+  vehicleIndex: number;
 };
 
 type CollectionModalState =
@@ -59,6 +82,10 @@ function getApiError(data: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function formatDateTime(value: string | null): string {
@@ -193,18 +220,43 @@ function CollectionDetailsModal({
 function SavedRouteCard({
   route,
   deletePending,
+  movePending,
+  draggedStop,
+  dropTarget,
   onDelete,
   onOpenCollection,
+  onMoveRequest,
+  onStopDragStart,
+  onStopDragEnd,
+  onVehicleDragOver,
+  onVehicleDragLeave,
+  onVehicleDrop,
 }: {
   route: SavedRoute;
   deletePending: boolean;
+  movePending: boolean;
+  draggedStop?: DraggedStop;
+  dropTarget?: DropTarget;
   onDelete: (id: string) => void;
   onOpenCollection: (id: string) => void;
+  onMoveRequest: (
+    savedRouteId: string,
+    collectionRequestId: string,
+    sourceVehicleIndex: number,
+    targetVehicleIndex: number,
+  ) => void;
+  onStopDragStart: (stop: DraggedStop) => void;
+  onStopDragEnd: () => void;
+  onVehicleDragOver: (savedRouteId: string, vehicleIndex: number) => void;
+  onVehicleDragLeave: (savedRouteId: string, vehicleIndex: number) => void;
+  onVehicleDrop: (savedRouteId: string, vehicleIndex: number) => void;
 }) {
   const isOpen = route.status === "OPEN";
   const routeCount = route.suggestion?.routes.length ?? 0;
   const stopCount = route.suggestion?.routes.reduce((sum, item) => sum + item.stops.length, 0) ?? 0;
   const totalLoad = route.suggestion?.routes.reduce((sum, item) => sum + item.totalLoad, 0) ?? 0;
+  const vehicleIndexes = route.suggestion?.routes.map((item) => item.vehicleIndex) ?? [];
+  const canMoveStops = isOpen && vehicleIndexes.length > 1 && !deletePending && !movePending;
 
   return (
     <article className="rounded-2xl bg-white p-5 shadow-sm">
@@ -224,19 +276,28 @@ function SavedRouteCard({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => onDelete(route.id)}
-          disabled={deletePending}
-          className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-red-700 bg-white px-4 py-2 text-sm font-semibold text-red-800 shadow-sm hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {deletePending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Trash2 className="h-4 w-4" />
-          )}
-          {deletePending ? "Excluindo..." : "Excluir"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/routes/saved/${route.id}/map`}
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-cyco-green bg-white px-4 py-2 text-sm font-semibold text-cyco-green shadow-sm hover:bg-cyco-green hover:text-white"
+          >
+            <Map className="h-4 w-4" />
+            Ver mapa
+          </Link>
+          <button
+            type="button"
+            onClick={() => onDelete(route.id)}
+            disabled={deletePending || movePending}
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-red-700 bg-white px-4 py-2 text-sm font-semibold text-red-800 shadow-sm hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deletePending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            {deletePending ? "Excluindo..." : "Excluir"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -279,10 +340,30 @@ function SavedRouteCard({
 
             {route.suggestion.routes.length > 0 && (
               <div className="mt-4 grid gap-3">
-                {route.suggestion.routes.map((vehicleRoute) => (
+                {route.suggestion.routes.map((vehicleRoute) => {
+                  const isActiveDropTarget = dropTarget?.savedRouteId === route.id &&
+                    dropTarget.vehicleIndex === vehicleRoute.vehicleIndex &&
+                    draggedStop?.savedRouteId === route.id &&
+                    draggedStop.sourceVehicleIndex !== vehicleRoute.vehicleIndex;
+
+                  return (
                   <details
                     key={vehicleRoute.vehicleIndex}
-                    className="group rounded-xl border border-gray-200 bg-white p-4"
+                    className={`group rounded-xl border bg-white p-4 transition ${
+                      isActiveDropTarget
+                        ? "border-cyco-green bg-cyco-light/60"
+                        : "border-gray-200"
+                    }`}
+                    onDragOver={(event) => {
+                      if (!canMoveStops || !draggedStop || draggedStop.savedRouteId !== route.id) return;
+                      event.preventDefault();
+                      onVehicleDragOver(route.id, vehicleRoute.vehicleIndex);
+                    }}
+                    onDragLeave={() => onVehicleDragLeave(route.id, vehicleRoute.vehicleIndex)}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      onVehicleDrop(route.id, vehicleRoute.vehicleIndex);
+                    }}
                   >
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
@@ -304,6 +385,12 @@ function SavedRouteCard({
                     </summary>
 
                     <div className="mt-4 grid gap-3">
+                      {isActiveDropTarget && (
+                        <div className="rounded-lg border border-dashed border-cyco-green bg-white/70 p-3 text-sm font-medium text-cyco-green">
+                          Soltar no veículo {vehicleRoute.vehicleIndex + 1}
+                        </div>
+                      )}
+
                       <div className="grid gap-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 sm:grid-cols-3">
                         <span>Capacidade: {vehicleRoute.capacity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
                         <span>Carga total: {vehicleRoute.totalLoad.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
@@ -318,22 +405,77 @@ function SavedRouteCard({
                         vehicleRoute.stops.map((stop) => (
                           <div
                             key={`${vehicleRoute.vehicleIndex}-${stop.sequence}-${stop.collectionRequestId}`}
-                            className="rounded-lg border border-gray-100 p-3"
+                            draggable={canMoveStops}
+                            onDragStart={(event) => {
+                              if (!canMoveStops) return;
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", stop.collectionRequestId);
+                              onStopDragStart({
+                                savedRouteId: route.id,
+                                collectionRequestId: stop.collectionRequestId,
+                                sourceVehicleIndex: vehicleRoute.vehicleIndex,
+                              });
+                            }}
+                            onDragEnd={onStopDragEnd}
+                            className={`rounded-lg border border-gray-100 p-3 transition ${
+                              canMoveStops ? "cursor-grab active:cursor-grabbing" : ""
+                            } ${
+                              movePending ? "opacity-70" : ""
+                            }`}
                           >
                             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                               <div>
-                                <div className="text-sm font-semibold text-gray-900">Parada {stop.sequence}</div>
+                                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                                  {canMoveStops && <GripVertical className="h-4 w-4 text-gray-400" />}
+                                  Parada {stop.sequence}
+                                  {movePending && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyco-green" />}
+                                </div>
                                 <div className="mt-1 text-xs text-gray-500">
                                   Endereço: {formatStopAddress(stop)}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenCollection(stop.collectionRequestId)}
-                                  className="mt-2 inline-flex items-center gap-1 rounded-full bg-cyco-light px-2.5 py-1 text-xs font-medium text-cyco-green hover:bg-cyco-green hover:text-white"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                  Ver coleta
-                                </button>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenCollection(stop.collectionRequestId)}
+                                    className="inline-flex items-center gap-1 rounded-full bg-cyco-light px-2.5 py-1 text-xs font-medium text-cyco-green hover:bg-cyco-green hover:text-white"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    Ver coleta
+                                  </button>
+                                  {canMoveStops && (
+                                    <label className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
+                                      <MoveRight className="h-3.5 w-3.5" />
+                                      <span className="sr-only">
+                                        Mover coleta {stop.collectionRequestId} para outro veículo
+                                      </span>
+                                      <select
+                                        value=""
+                                        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                                          const targetVehicleIndex = Number(event.target.value);
+                                          if (!Number.isInteger(targetVehicleIndex)) return;
+                                          onMoveRequest(
+                                            route.id,
+                                            stop.collectionRequestId,
+                                            vehicleRoute.vehicleIndex,
+                                            targetVehicleIndex,
+                                          );
+                                        }}
+                                        disabled={!canMoveStops}
+                                        className="rounded-full border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        aria-label={`Mover parada ${stop.sequence} para outro veículo`}
+                                      >
+                                        <option value="">Mover para...</option>
+                                        {vehicleIndexes
+                                          .filter((vehicleIndex) => vehicleIndex !== vehicleRoute.vehicleIndex)
+                                          .map((vehicleIndex) => (
+                                            <option key={vehicleIndex} value={vehicleIndex}>
+                                              Veículo {vehicleIndex + 1}
+                                            </option>
+                                          ))}
+                                      </select>
+                                    </label>
+                                  )}
+                                </div>
                               </div>
                               <div className="grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
                                 <span>Demanda: {stop.demand.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
@@ -350,7 +492,8 @@ function SavedRouteCard({
                       )}
                     </div>
                   </details>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -385,9 +528,13 @@ export default function SavedRoutesPage() {
   const [error, setError] = useState<PageError>();
   const [deletePendingId, setDeletePendingId] = useState<string>();
   const [deleteFeedback, setDeleteFeedback] = useState<DeleteRouteFeedback>();
+  const [movePending, setMovePending] = useState<DraggedStop>();
+  const [moveFeedback, setMoveFeedback] = useState<MoveRouteFeedback>();
+  const [draggedStop, setDraggedStop] = useState<DraggedStop>();
+  const [dropTarget, setDropTarget] = useState<DropTarget>();
   const [collectionModal, setCollectionModal] = useState<CollectionModalState>({ status: "idle" });
 
-  const headers = useMemo((): HeadersInit => (
+  const headers = useMemo((): Record<string, string> => (
     sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}
   ), [sessionMeta.token]);
 
@@ -433,6 +580,7 @@ export default function SavedRoutesPage() {
   async function deleteSavedRoute(savedRouteId: string) {
     setDeletePendingId(savedRouteId);
     setDeleteFeedback(undefined);
+    setMoveFeedback(undefined);
 
     try {
       const res = await fetch(`/api/collectors/routes/saved/${savedRouteId}`, {
@@ -458,6 +606,122 @@ export default function SavedRoutesPage() {
     } finally {
       setDeletePendingId(undefined);
     }
+  }
+
+  async function moveSavedRouteRequest(
+    savedRouteId: string,
+    collectionRequestId: string,
+    sourceVehicleIndex: number,
+    targetVehicleIndex: number,
+  ) {
+    const result = buildMoveSavedRouteRequest(collectionRequestId, sourceVehicleIndex, targetVehicleIndex);
+
+    setDraggedStop(undefined);
+    setDropTarget(undefined);
+
+    if (result.noop) return;
+
+    if (!result.payload) {
+      setMoveFeedback({
+        type: "error",
+        message: result.error ?? "Não foi possível mover a coleta.",
+      });
+      return;
+    }
+
+    setMovePending({
+      savedRouteId,
+      collectionRequestId: result.payload.collectionRequestId,
+      sourceVehicleIndex: result.payload.sourceVehicleIndex,
+    });
+    setMoveFeedback(undefined);
+    setDeleteFeedback(undefined);
+    const previousRoute = routes.find((route) => route.id === savedRouteId);
+
+    try {
+      const res = await fetch(`/api/collectors/routes/saved/${savedRouteId}/move-request`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(result.payload),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao mover coleta entre veículos."));
+      }
+
+      const updatedRouteInput = isRecord(data) && previousRoute
+        ? {
+          ...previousRoute,
+          ...data,
+          createdAt: data.createdAt ?? previousRoute.createdAt,
+          closedAt: data.closedAt ?? previousRoute.closedAt,
+        }
+        : data;
+      const updatedRoute = normalizeSavedRoute(updatedRouteInput)[0];
+      if (!updatedRoute) {
+        throw new Error("Resposta da rota atualizada inválida.");
+      }
+
+      setRoutes((current) => current.map((route) => (
+        route.id === updatedRoute.id ? updatedRoute : route
+      )));
+      setMoveFeedback({
+        type: "success",
+        message: "Coleta movida entre veículos com sucesso.",
+      });
+    } catch (err) {
+      setMoveFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Erro ao mover coleta entre veículos.",
+      });
+    } finally {
+      setMovePending(undefined);
+    }
+  }
+
+  function handleStopDragStart(stop: DraggedStop) {
+    if (movePending || deletePendingId === stop.savedRouteId) return;
+    setDraggedStop(stop);
+  }
+
+  function handleStopDragEnd() {
+    setDraggedStop(undefined);
+    setDropTarget(undefined);
+  }
+
+  function handleVehicleDragOver(savedRouteId: string, vehicleIndex: number) {
+    if (!draggedStop || draggedStop.savedRouteId !== savedRouteId || draggedStop.sourceVehicleIndex === vehicleIndex) {
+      setDropTarget(undefined);
+      return;
+    }
+
+    setDropTarget({ savedRouteId, vehicleIndex });
+  }
+
+  function handleVehicleDragLeave(savedRouteId: string, vehicleIndex: number) {
+    setDropTarget((current) => (
+      current?.savedRouteId === savedRouteId && current.vehicleIndex === vehicleIndex
+        ? undefined
+        : current
+    ));
+  }
+
+  function handleVehicleDrop(savedRouteId: string, vehicleIndex: number) {
+    if (!draggedStop || draggedStop.savedRouteId !== savedRouteId) {
+      setDropTarget(undefined);
+      return;
+    }
+
+    moveSavedRouteRequest(
+      savedRouteId,
+      draggedStop.collectionRequestId,
+      draggedStop.sourceVehicleIndex,
+      vehicleIndex,
+    );
   }
 
   async function openCollectionDetails(collectionId: string) {
@@ -561,6 +825,23 @@ export default function SavedRoutesPage() {
                   </section>
                 )}
 
+                {moveFeedback && (
+                  <section
+                    className={`flex items-start gap-2 rounded-2xl border p-5 text-sm ${
+                      moveFeedback.type === "success"
+                        ? "border-green-100 bg-green-50 text-green-700"
+                        : "border-red-100 bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {moveFeedback.type === "success" ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    {moveFeedback.message}
+                  </section>
+                )}
+
                 {loading ? (
                   <section className="flex items-center gap-2 rounded-2xl bg-white p-5 text-sm text-gray-600 shadow-sm">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -577,8 +858,17 @@ export default function SavedRoutesPage() {
                         key={route.id}
                         route={route}
                         deletePending={deletePendingId === route.id}
+                        movePending={movePending?.savedRouteId === route.id}
+                        draggedStop={draggedStop}
+                        dropTarget={dropTarget}
                         onDelete={deleteSavedRoute}
                         onOpenCollection={openCollectionDetails}
+                        onMoveRequest={moveSavedRouteRequest}
+                        onStopDragStart={handleStopDragStart}
+                        onStopDragEnd={handleStopDragEnd}
+                        onVehicleDragOver={handleVehicleDragOver}
+                        onVehicleDragLeave={handleVehicleDragLeave}
+                        onVehicleDrop={handleVehicleDrop}
                       />
                     ))}
                   </div>

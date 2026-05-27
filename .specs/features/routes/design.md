@@ -16,7 +16,7 @@ Flow:
 3. Collector clicks the card and opens `/routes/suggest`.
 4. Page verifies authenticated collector session.
 5. Page loads candidate collections with `/api/collections/search?collectorId=<session.user.id>&status=IN_PROGRESS`.
-6. Collector selects candidate requests, fills vehicle inputs, and chooses current or registered start location.
+6. Collector selects candidate requests, sets vehicle count and per-vehicle capacities, chooses current or registered start location, and submits with static solver defaults.
 7. Page posts to `/api/collectors/routes/suggest`.
 8. Route handler calls `POST ${COLLECTIONS_API_URL}/collectors/routes/suggest`.
 9. Page renders solver summary, routes, stops, and unassigned collections.
@@ -82,7 +82,7 @@ Flow:
   - Block non-collector users with a clear access message or redirect.
   - Load only `IN_PROGRESS` candidate collections for the collector.
   - Let the collector choose candidate requests with checkboxes.
-  - Validate vehicle count, vehicle capacity, selected start-location coordinates, and selected candidates.
+  - Validate vehicle count, per-vehicle capacities, selected start-location coordinates, static filters/options, and selected candidates.
   - Render route suggestion result after successful submit.
 
 ### Route Suggestion API Route
@@ -104,17 +104,25 @@ Flow:
 ```typescript
 interface RouteSuggestionRequest {
   collectorId: string;
-  vehicleCount: number;
-  vehicleCapacity: number;
+  vehicles: Array<{ capacity: number }>;
   start: {
     type: "COORDINATES";
+    addressId: string | null;
     latitude: number;
     longitude: number;
   };
+  endAtStart: boolean;
   candidateRequestIds: string[];
+  filters: {
+    materialIds: string[];
+    maxDistanceKmFromStart: number;
+    onlyInProgress: boolean;
+  };
   options: {
     timeLimitSeconds: number;
     allowDroppingStops: boolean;
+    dropPenalty: number;
+    distanceUnit: "METERS" | "KILOMETERS";
   };
 }
 ```
@@ -160,12 +168,12 @@ interface SuggestedRouteStop {
 interface RouteSuggestionFormState {
   selectedRequestIds: string[];
   vehicleCount: string;
-  vehicleCapacity: string;
+  vehicleCapacities: string[];
   startLocationSource: "current" | "registered";
   // Filled from browser geolocation or registered address coordinates, not editable fields.
   latitude: string;
   longitude: string;
-  timeLimitSeconds: string;
+  endAtStart: boolean;
   allowDroppingStops: boolean;
 }
 ```
@@ -196,12 +204,18 @@ GET /api/collections/search?collectorId=<session.user.id>&status=IN_PROGRESS
 | --- | --- |
 | `collectorId` | Required from session. |
 | `vehicleCount` | Integer greater than or equal to 1. |
-| `vehicleCapacity` | Number greater than 0. |
+| `vehicleCapacities[]` | Each visible vehicle capacity must be greater than 0 and is serialized into `vehicles[]`. |
 | `latitude` | Number between -90 and 90, filled from selected start source. |
 | `longitude` | Number between -180 and 180, filled from selected start source. |
+| `endAtStart` | Boolean; default `true`. |
 | `candidateRequestIds` | At least one selected collection request ID. |
-| `timeLimitSeconds` | Number greater than 0; default `5`. |
+| `filters.materialIds` | Derived from selected candidate collection materials. |
+| `filters.maxDistanceKmFromStart` | Static default `50`. |
+| `filters.onlyInProgress` | Boolean; always `true` for current route candidate rules. |
+| `timeLimitSeconds` | Static default `5`. |
 | `allowDroppingStops` | Boolean; default `true`. |
+| `dropPenalty` | Static default `100000`. |
+| `distanceUnit` | Static default `METERS`. |
 
 ## Error Handling Strategy
 
@@ -226,7 +240,7 @@ GET /api/collections/search?collectorId=<session.user.id>&status=IN_PROGRESS
 | Backend access | Local App Router proxy | Keeps `COLLECTIONS_API_URL` server-side and matches existing API patterns. |
 | Candidate source | Existing collections search route | Reuses current collection normalization and role filtering. |
 | Start location | Current geolocation or registered collection address coordinates | User requested a choice between current and registered location without editable lat/long fields. |
-| Options defaults | `timeLimitSeconds=5`, `allowDroppingStops=true` | Matches provided sample request. |
+| Options defaults | Keep `timeLimitSeconds=5`, `dropPenalty=100000`, `distanceUnit=METERS`, and `maxDistanceKmFromStart=50` static; expose only route start, return-to-start, allow dropping, and vehicle capacities | Keeps the form focused while matching the backend contract. |
 | Result rendering | Text/list route summary cards | Avoids map dependency while still exposing all solver/stops data. |
 | Tests | Lint/build gates for now | Project has no automated test framework configured. |
 

@@ -11,8 +11,9 @@ Waste collectors need a way to build efficient route suggestions from multiple c
 - [x] Keep `CreateCollectionCard` visible for generator home.
 - [x] Add a route suggestion request page for collectors.
 - [x] Let collectors choose which collection requests to include in the route.
-- [x] Let collectors inform vehicle count and vehicle capacity.
+- [x] Let collectors inform vehicle count and a different capacity for each vehicle, serialized as `vehicles[]`.
 - [x] Let collectors choose current location or registered location as route start.
+- [x] Let collectors configure return-to-start while keeping max distance, time limit, drop penalty, and distance unit static.
 - [x] Submit route suggestion requests to `POST ${COLLECTIONS_API_URL}/collectors/routes/suggest`.
 - [x] Render route suggestion results from the provided response shape.
 
@@ -39,7 +40,7 @@ Waste collectors need a way to build efficient route suggestions from multiple c
 - Start coordinates can come from browser geolocation or from the collector's registered address via `GET ${COLLECTIONS_API_URL}/collectors/[collectorId]/address`.
 - If the user chooses current location and denies geolocation permission, submit remains blocked until a valid location source is available.
 - If the user chooses registered location and the registered address response does not expose coordinates, submit remains blocked until another valid location source is chosen.
-- Default route options are `timeLimitSeconds=5` and `allowDroppingStops=true`, matching the provided contract.
+- Static route options are `timeLimitSeconds=5`, `dropPenalty=100000`, `distanceUnit=METERS`, and `maxDistanceKmFromStart=50`; `allowDroppingStops` and `endAtStart` remain visible form controls.
 - Vehicle capacity is numeric and uses the same weight unit as collection `weight`.
 
 ---
@@ -114,7 +115,7 @@ Waste collectors need a way to build efficient route suggestions from multiple c
 
 1. WHEN the collector submits a valid form THEN the system SHALL POST through a local API route.
 2. WHEN the local API route is called THEN it SHALL call `POST ${COLLECTIONS_API_URL}/collectors/routes/suggest`.
-3. WHEN submitting THEN the payload SHALL include `collectorId`, `vehicleCount`, `vehicleCapacity`, `start`, `candidateRequestIds`, and `options`.
+3. WHEN submitting THEN the payload SHALL include `collectorId`, `vehicles`, `start`, `endAtStart`, `candidateRequestIds`, `filters`, and `options`.
 4. WHEN the session token exists THEN the local API route SHALL forward authorization.
 5. WHEN the backend returns an error THEN the page SHALL show an error and keep form data.
 
@@ -148,6 +149,7 @@ Waste collectors need a way to build efficient route suggestions from multiple c
 - WHEN candidate collection data is malformed THEN invalid items SHALL be skipped.
 - WHEN a candidate collection is not `IN_PROGRESS` THEN it SHALL not be displayed or selectable.
 - WHEN `candidateRequestIds` is empty THEN submit SHALL not call the backend.
+- WHEN selected candidate materials exist THEN they SHALL be sent as `filters.materialIds`.
 - WHEN coordinates are outside valid ranges THEN validation SHALL prevent submit.
 - WHEN browser geolocation is unsupported or denied THEN submit SHALL remain blocked and the page SHALL show a retry/error state.
 - WHEN registered address coordinates are missing THEN submit SHALL remain blocked for registered source and the page SHALL show a retry/error state.
@@ -178,6 +180,7 @@ Waste collectors need a way to build efficient route suggestions from multiple c
 - [x] Collectors can open the route suggestion page.
 - [x] Collectors can select candidate collections.
 - [x] Collectors can submit vehicle/count/capacity/start location data.
+- [x] Collectors can submit route filters and advanced solver options in the new request shape.
 - [x] Frontend posts to `POST ${COLLECTIONS_API_URL}/collectors/routes/suggest` through a local route handler.
 - [x] Route suggestion response renders clearly.
 - [x] `npm run lint` and `npm run build` pass after implementation.
