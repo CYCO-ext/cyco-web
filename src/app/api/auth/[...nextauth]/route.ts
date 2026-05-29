@@ -36,6 +36,7 @@ const handler = NextAuth({
         password: { label: "Senha", type: "password" },
       },
       async authorize(credentials) {
+          console.log("credentials", credentials)
         const res = await fetch(`${NEXTAUTH_URL}/api/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -44,6 +45,8 @@ const handler = NextAuth({
             password: credentials?.password,
           }),
         });
+        console.log("status backend", res.status)
+  console.log("body backend", await res.clone().text())
         if (!res.ok) return null;
         const data = await res.json() as Partial<TSessionOutputDTO>;
         if (data && data.user && data.token) {
