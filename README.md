@@ -20,6 +20,23 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Firebase Cloud Messaging
+
+Browser push notifications use Firebase Cloud Messaging. Configure these public web app values in `.env`:
+
+```bash
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
+NEXT_PUBLIC_FIREBASE_VAPID_KEY=
+```
+
+`NEXT_PUBLIC_FIREBASE_VAPID_KEY` comes from Firebase Console > Cloud Messaging > Web Push certificates. The app registers generator tokens through `PUT /api/generators/{generatorId}/notification-token`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

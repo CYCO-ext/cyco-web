@@ -31,9 +31,11 @@ import {
   buildRouteSuggestionRequest,
   buildSaveRouteRequest,
   createInitialRouteSuggestionFormState,
+  defaultVehicleName,
   extractRegisteredStartCoordinates,
   formatDistanceMeters,
   formatRouteLoad,
+  getVehicleDisplayName,
   normalizeRouteSuggestionResponse,
   RouteSuggestionFormState,
   RouteSuggestionResponse,
@@ -205,12 +207,17 @@ function RouteResult({
 }
 
 function VehicleRouteCard({ route }: { route: SuggestedRoute }) {
+  const vehicleName = getVehicleDisplayName(route);
+
   return (
     <article className="rounded-xl border border-gray-200 bg-gray-50 p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Truck className="h-5 w-5 text-cyco-green" />
-          <h3 className="font-semibold text-gray-900">Veículo {route.vehicleIndex + 1}</h3>
+          <h3 className="font-semibold text-gray-900">{vehicleName}</h3>
+          {vehicleName !== defaultVehicleName(route.vehicleIndex) && (
+            <span className="text-xs text-gray-500">Veículo {route.vehicleIndex + 1}</span>
+          )}
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-gray-600">
           <span>Capacidade: {formatRouteLoad(route.capacity)}</span>
@@ -418,25 +425,44 @@ export default function SuggestRoutePage() {
         return { ...current, vehicleCount: value };
       }
 
-      const nextCapacities = Array.from({ length: parsed }, (_, index) => (
-        current.vehicleCapacities[index] ?? current.vehicleCapacities.at(-1) ?? "100"
-      ));
+      const nextNames = [...current.vehicleNames];
+      const nextCapacities = [...current.vehicleCapacities];
+      for (let index = 0; index < parsed; index += 1) {
+        nextNames[index] = nextNames[index] ?? defaultVehicleName(index);
+        nextCapacities[index] = nextCapacities[index] ?? nextCapacities.at(-1) ?? "100";
+      }
 
       return {
         ...current,
         vehicleCount: value,
+        vehicleNames: nextNames,
         vehicleCapacities: nextCapacities,
       };
     });
   }
 
+  function updateVehicleName(index: number, value: string) {
+    setForm((current) => {
+      const vehicleNames = [...current.vehicleNames];
+      vehicleNames[index] = value;
+
+      return {
+        ...current,
+        vehicleNames,
+      };
+    });
+  }
+
   function updateVehicleCapacity(index: number, value: string) {
-    setForm((current) => ({
-      ...current,
-      vehicleCapacities: current.vehicleCapacities.map((capacity, capacityIndex) => (
-        capacityIndex === index ? value : capacity
-      )),
-    }));
+    setForm((current) => {
+      const vehicleCapacities = [...current.vehicleCapacities];
+      vehicleCapacities[index] = value;
+
+      return {
+        ...current,
+        vehicleCapacities,
+      };
+    });
   }
 
   function toggleCandidate(id: string) {
@@ -517,7 +543,13 @@ export default function SuggestRoutePage() {
         throw new Error("Resposta de rota inválida.");
       }
 
-      setResult(normalized);
+      setResult({
+        ...normalized,
+        routes: normalized.routes.map((route) => ({
+          ...route,
+          vehicleName: route.vehicleName ?? payload.vehicles[route.vehicleIndex]?.name,
+        })),
+      });
       setSaveState({ status: "idle" });
     } catch (error) {
       setSubmitError({
@@ -563,6 +595,18 @@ export default function SuggestRoutePage() {
       });
     }
   }
+
+  const visibleVehicleCount = useMemo(() => {
+    const parsed = Number(form.vehicleCount);
+    return Number.isInteger(parsed) && parsed >= 1 ? parsed : form.vehicleCapacities.length;
+  }, [form.vehicleCapacities.length, form.vehicleCount]);
+
+  const visibleVehicles = useMemo(() => (
+    Array.from({ length: visibleVehicleCount }, (_, index) => ({
+      name: form.vehicleNames[index] ?? defaultVehicleName(index),
+      capacity: form.vehicleCapacities[index] ?? "",
+    }))
+  ), [form.vehicleCapacities, form.vehicleNames, visibleVehicleCount]);
 
   if (status === "loading") {
     return (
@@ -670,18 +714,29 @@ export default function SuggestRoutePage() {
                       </label>
 
                       <div className="grid gap-3">
-                        <div className="text-sm font-medium text-gray-700">Capacidade dos veículos</div>
-                        {form.vehicleCapacities.map((capacity, index) => (
-                          <label key={`vehicle-capacity-${index}`} className="grid gap-1 text-sm text-gray-700">
-                            Veículo {index + 1}
-                            <Input
-                              type="number"
-                              min={0}
-                              step="0.1"
-                              value={capacity}
-                              onChange={(event) => updateVehicleCapacity(index, event.target.value)}
-                            />
-                          </label>
+                        <div className="text-sm font-medium text-gray-700">Veículos</div>
+                        {visibleVehicles.map((vehicle, index) => (
+                          <div key={`vehicle-${index}`} className="grid gap-3 rounded-xl border border-gray-200 p-3">
+                            <label className="grid gap-1 text-sm text-gray-700">
+                              Nome do veículo {index + 1}
+                              <Input
+                                type="text"
+                                maxLength={60}
+                                value={vehicle.name}
+                                onChange={(event) => updateVehicleName(index, event.target.value)}
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm text-gray-700">
+                              Capacidade
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.1"
+                                value={vehicle.capacity}
+                                onChange={(event) => updateVehicleCapacity(index, event.target.value)}
+                              />
+                            </label>
+                          </div>
                         ))}
                       </div>
 

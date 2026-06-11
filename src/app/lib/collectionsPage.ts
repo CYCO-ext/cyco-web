@@ -322,6 +322,8 @@ export function statusLabel(status: CollectionStatus): string {
   const labels: Record<string, string> = {
     PENDING: "Pendente",
     IN_PROGRESS: "Em andamento",
+    COLLECTOR_ON_THE_WAY: "Coletor a caminho",
+    ON_THE_WAY: "Coletor a caminho",
     COMPLETED: "Concluída",
     CANCELED: "Cancelada",
     CANCELLED: "Cancelada",
@@ -342,6 +344,7 @@ export function formatProfilePhone(phone?: CounterpartProfile["phone"]): string 
 export const COLLECTION_STATUS_OPTIONS = [
   "PENDING",
   "IN_PROGRESS",
+  "COLLECTOR_ON_THE_WAY",
   "COMPLETED",
   "CANCELED",
 ] as const;

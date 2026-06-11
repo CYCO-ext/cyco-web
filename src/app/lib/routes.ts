@@ -1,6 +1,7 @@
 export interface RouteSuggestionRequest {
   collectorId: string;
   vehicles: Array<{
+    name: string;
     capacity: number;
   }>;
   start: {
@@ -38,6 +39,7 @@ export interface RouteSuggestionResponse {
 
 export interface SuggestedRoute {
   vehicleIndex: number;
+  vehicleName?: string;
   capacity: number;
   totalLoad: number;
   totalDistanceMeters: number;
@@ -60,6 +62,7 @@ export interface SuggestedRouteStop {
 export interface RouteSuggestionFormState {
   selectedRequestIds: string[];
   vehicleCount: string;
+  vehicleNames: string[];
   vehicleCapacities: string[];
   startLocationSource: "current" | "registered";
   latitude: string;
@@ -182,6 +185,7 @@ const DEFAULT_DROP_PENALTY = 100000;
 const DEFAULT_DISTANCE_UNIT: RouteSuggestionRequest["options"]["distanceUnit"] = "METERS";
 const GOOGLE_MAPS_DIRECTIONS_URL = "https://www.google.com/maps/dir/";
 const GOOGLE_MAPS_URL_MAX_LENGTH = 2048;
+const MAX_VEHICLE_NAME_LENGTH = 60;
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
@@ -200,10 +204,23 @@ function numberFrom(value: unknown): number | undefined {
   return undefined;
 }
 
+export function defaultVehicleName(index: number): string {
+  return `Veículo ${index + 1}`;
+}
+
+export function normalizeVehicleName(value: string): string {
+  return value.trim();
+}
+
+export function getVehicleDisplayName(route: SuggestedRoute): string {
+  return route.vehicleName ?? defaultVehicleName(route.vehicleIndex);
+}
+
 export function createInitialRouteSuggestionFormState(): RouteSuggestionFormState {
   return {
     selectedRequestIds: [],
     vehicleCount: "2",
+    vehicleNames: [defaultVehicleName(0), defaultVehicleName(1)],
     vehicleCapacities: ["100", "80"],
     startLocationSource: "current",
     latitude: "",
@@ -231,6 +248,27 @@ export function buildRouteSuggestionRequest(
     return { error: "Informe uma quantidade de veículos maior ou igual a 1." };
   }
 
+  const vehicleNames = Array.from({ length: vehicleCount }, (_, index) => (
+    normalizeVehicleName(state.vehicleNames[index] ?? "")
+  ));
+  const blankNameIndex = vehicleNames.findIndex((name) => !name);
+  if (blankNameIndex >= 0) {
+    return { error: `Informe um nome para o veículo ${blankNameIndex + 1}.` };
+  }
+
+  const longNameIndex = vehicleNames.findIndex((name) => name.length > MAX_VEHICLE_NAME_LENGTH);
+  if (longNameIndex >= 0) {
+    return {
+      error: `Informe um nome com até ${MAX_VEHICLE_NAME_LENGTH} caracteres para o veículo ${longNameIndex + 1}.`,
+    };
+  }
+
+  const normalizedNameKeys = vehicleNames.map((name) => name.toLocaleLowerCase("pt-BR"));
+  const duplicateNameIndex = normalizedNameKeys.findIndex((name, index) => normalizedNameKeys.indexOf(name) !== index);
+  if (duplicateNameIndex >= 0) {
+    return { error: `O nome "${vehicleNames[duplicateNameIndex]}" já está sendo usado em outro veículo.` };
+  }
+
   const vehicleCapacities = Array.from({ length: vehicleCount }, (_, index) => (
     numberFrom(state.vehicleCapacities[index])
   ));
@@ -252,7 +290,10 @@ export function buildRouteSuggestionRequest(
   return {
     payload: {
       collectorId,
-      vehicles: vehicleCapacities.map((capacity) => ({ capacity: capacity! })),
+      vehicles: vehicleCapacities.map((capacity, index) => ({
+        name: vehicleNames[index],
+        capacity: capacity!,
+      })),
       start: {
         type: "COORDINATES",
         addressId: null,
@@ -738,6 +779,7 @@ function normalizeRoute(value: unknown): SuggestedRoute[] {
   if (!isRecord(value)) return [];
 
   const vehicleIndex = numberFrom(value.vehicleIndex);
+  const vehicleName = stringFrom(value.vehicleName) ?? stringFrom(value.name);
   const capacity = numberFrom(value.capacity);
   const totalLoad = numberFrom(value.totalLoad);
   const totalDistanceMeters = numberFrom(value.totalDistanceMeters);
@@ -754,6 +796,7 @@ function normalizeRoute(value: unknown): SuggestedRoute[] {
 
   return [{
     vehicleIndex,
+    vehicleName,
     capacity,
     totalLoad,
     totalDistanceMeters,
@@ -815,8 +858,9 @@ export function isRouteSuggestionRequest(value: unknown): value is RouteSuggesti
     value.vehicles.length > 0 &&
     value.vehicles.every((vehicle) => {
       if (!isRecord(vehicle)) return false;
+      const name = stringFrom(vehicle.name);
       const capacity = numberFrom(vehicle.capacity);
-      return capacity !== undefined && capacity > 0;
+      return Boolean(name && name.length <= MAX_VEHICLE_NAME_LENGTH && capacity !== undefined && capacity > 0);
     }) &&
     value.start.type === "COORDINATES" &&
     ("addressId" in value.start) &&

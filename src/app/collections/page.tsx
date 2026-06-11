@@ -49,7 +49,7 @@ type PageError = {
   message: string;
 };
 
-type CollectionActionKind = "accept" | "reject" | "finish" | "cancel";
+type CollectionActionKind = "accept" | "reject" | "finish" | "cancel" | "on-way";
 
 function getApiError(data: unknown, fallback: string): string {
   if (typeof data === "object" && data !== null && "error" in data) {
@@ -98,11 +98,15 @@ function isRejectEligible(collection: CollectionSummary): boolean {
 }
 
 function isFinishEligible(collection: CollectionSummary): boolean {
-  return collection.status === "IN_PROGRESS";
+  return ["IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
 }
 
 function isCancelEligible(collection: CollectionSummary): boolean {
-  return ["PENDING", "IN_PROGRESS"].includes(collection.status);
+  return ["PENDING", "IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
+}
+
+function isOnWayEligible(collection: CollectionSummary): boolean {
+  return collection.status === "IN_PROGRESS";
 }
 
 function hasViewerConfirmed(collection: CollectionSummary, viewerRole?: ViewerRole): boolean {
@@ -203,6 +207,7 @@ function CollectionCard({
   onReject,
   onFinish,
   onCancel,
+  onMarkOnWay,
 }: {
   collection: CollectionSummary;
   counterpart?: CounterpartProfile;
@@ -215,16 +220,20 @@ function CollectionCard({
   onReject: (collectionId: string) => void;
   onFinish: (collectionId: string) => void;
   onCancel: (collectionId: string) => void;
+  onMarkOnWay: (collectionId: string) => void;
 }) {
   const showAccept = viewerRole === "WASTE_COLLECTOR" && isAcceptEligible(collection);
   const showReject = viewerRole === "WASTE_COLLECTOR" && isRejectEligible(collection);
   const showFinish = !!viewerRole && isFinishEligible(collection);
   const showCancel = !!viewerRole && isCancelEligible(collection);
+  const showOnWay = viewerRole === "WASTE_COLLECTOR" && isOnWayEligible(collection);
   const viewerConfirmed = hasViewerConfirmed(collection, viewerRole);
   const actionCopy = showFinish
     ? viewerConfirmed
       ? "Você já confirmou a finalização desta coleta."
-      : "Confirme a finalização desta coleta."
+      : showOnWay
+        ? "Avise o gerador quando estiver a caminho."
+        : "Confirme a finalização desta coleta."
     : showAccept
       ? "Aceite, rejeite ou cancele esta solicitação."
       : showCancel
@@ -295,7 +304,7 @@ function CollectionCard({
         <ConfirmationFlag label="Coletor" confirmed={collection.collectorConfirmed} />
       </div>
 
-      {(showAccept || showReject || showFinish || showCancel || feedback) && (
+      {(showAccept || showReject || showFinish || showOnWay || showCancel || feedback) && (
         <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
           {feedback ? (
             <span
@@ -334,18 +343,31 @@ function CollectionCard({
           )}
 
           {showFinish && (
-            <button
-              type="button"
-              onClick={() => onFinish(collection.id)}
-              disabled={actionPending || viewerConfirmed}
-              className={`${button()} min-w-32 disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              {actionPending && actionPendingKind === "finish"
-                ? "Finalizando..."
-                : viewerConfirmed
-                  ? "Finalização confirmada"
-                  : "Finalizar coleta"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {showOnWay && (
+                <button
+                  type="button"
+                  onClick={() => onMarkOnWay(collection.id)}
+                  disabled={actionPending}
+                  className="inline-flex min-w-36 items-center justify-center rounded-xl border border-cyco-green bg-white px-4 py-2 font-semibold text-cyco-green shadow-sm hover:bg-cyco-light disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {actionPending && actionPendingKind === "on-way" ? "Avisando..." : "Estou a caminho"}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onFinish(collection.id)}
+                disabled={actionPending || viewerConfirmed}
+                className={`${button()} min-w-32 disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                {actionPending && actionPendingKind === "finish"
+                  ? "Finalizando..."
+                  : viewerConfirmed
+                    ? "Finalização confirmada"
+                    : "Finalizar coleta"}
+              </button>
+            </div>
           )}
 
           {showCancel && (
@@ -611,6 +633,56 @@ export default function CollectionsPage() {
     }
   }, [loadCollections, sessionMeta.generatorId, sessionMeta.token, viewerRole]);
 
+  const handleMarkOnWay = useCallback(async (collectionId: string) => {
+    if (!sessionMeta.generatorId) {
+      setActionFeedback({
+        collectionId,
+        type: "error",
+        message: "Não foi possível identificar o coletor autenticado.",
+      });
+      return;
+    }
+
+    setActionPendingId(collectionId);
+    setActionPendingKind("on-way");
+    setActionFeedback(undefined);
+
+    try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}),
+      };
+      const res = await fetch(`/api/collectors/requests/${collectionId}/on-the-way`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ collectorId: sessionMeta.generatorId }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao avisar que o coletor está a caminho."));
+      }
+
+      setActionFeedback({
+        collectionId,
+        type: "success",
+        message: "Gerador avisado que o coletor está a caminho.",
+      });
+      await loadCollections();
+    } catch (onWayError) {
+      setActionFeedback({
+        collectionId,
+        type: "error",
+        message: onWayError instanceof Error
+          ? onWayError.message
+          : "Erro ao avisar que o coletor está a caminho.",
+      });
+    } finally {
+      setActionPendingId(undefined);
+      setActionPendingKind(undefined);
+    }
+  }, [loadCollections, sessionMeta.generatorId, sessionMeta.token]);
+
   const handleFinish = useCallback(async (collectionId: string) => {
     if (!viewerRole) return;
 
@@ -766,6 +838,7 @@ export default function CollectionsPage() {
                       onReject={handleReject}
                       onFinish={handleFinish}
                       onCancel={handleCancel}
+                      onMarkOnWay={handleMarkOnWay}
                     />
                   );
                 })}

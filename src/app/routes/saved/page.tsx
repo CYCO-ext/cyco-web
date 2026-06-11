@@ -12,7 +12,7 @@ import {
   Eye,
   GripVertical,
   Loader2,
-  Map,
+  Map as MapIcon,
   MapPin,
   MoveRight,
   RotateCcw,
@@ -37,6 +37,7 @@ import {
 import { getSessionMeta } from "@/app/lib/createCollection";
 import {
   buildMoveSavedRouteRequest,
+  getVehicleDisplayName,
   formatDistanceMeters,
   normalizeSavedRoute,
   normalizeSavedRoutes,
@@ -256,6 +257,10 @@ function SavedRouteCard({
   const stopCount = route.suggestion?.routes.reduce((sum, item) => sum + item.stops.length, 0) ?? 0;
   const totalLoad = route.suggestion?.routes.reduce((sum, item) => sum + item.totalLoad, 0) ?? 0;
   const vehicleIndexes = route.suggestion?.routes.map((item) => item.vehicleIndex) ?? [];
+  const vehicleLabels = new Map(route.suggestion?.routes.map((item) => [
+    item.vehicleIndex,
+    getVehicleDisplayName(item),
+  ]) ?? []);
   const canMoveStops = isOpen && vehicleIndexes.length > 1 && !deletePending && !movePending;
 
   return (
@@ -281,7 +286,7 @@ function SavedRouteCard({
             href={`/routes/saved/${route.id}/map`}
             className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-cyco-green bg-white px-4 py-2 text-sm font-semibold text-cyco-green shadow-sm hover:bg-cyco-green hover:text-white"
           >
-            <Map className="h-4 w-4" />
+            <MapIcon className="h-4 w-4" />
             Ver mapa
           </Link>
           <button
@@ -345,6 +350,7 @@ function SavedRouteCard({
                     dropTarget.vehicleIndex === vehicleRoute.vehicleIndex &&
                     draggedStop?.savedRouteId === route.id &&
                     draggedStop.sourceVehicleIndex !== vehicleRoute.vehicleIndex;
+                  const vehicleLabel = getVehicleDisplayName(vehicleRoute);
 
                   return (
                   <details
@@ -372,9 +378,10 @@ function SavedRouteCard({
                         </div>
                         <div className="min-w-0">
                           <div className="font-semibold text-gray-900">
-                            Veículo {vehicleRoute.vehicleIndex + 1}
+                            {vehicleLabel}
                           </div>
                           <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                            <span>Veículo {vehicleRoute.vehicleIndex + 1}</span>
                             <span>{vehicleRoute.stops.length} parada(s)</span>
                             <span>{formatDistanceMeters(vehicleRoute.totalDistanceMeters)}</span>
                             <span>Carga {vehicleRoute.totalLoad.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
@@ -387,7 +394,7 @@ function SavedRouteCard({
                     <div className="mt-4 grid gap-3">
                       {isActiveDropTarget && (
                         <div className="rounded-lg border border-dashed border-cyco-green bg-white/70 p-3 text-sm font-medium text-cyco-green">
-                          Soltar no veículo {vehicleRoute.vehicleIndex + 1}
+                          Soltar em {vehicleLabel}
                         </div>
                       )}
 
@@ -469,7 +476,7 @@ function SavedRouteCard({
                                           .filter((vehicleIndex) => vehicleIndex !== vehicleRoute.vehicleIndex)
                                           .map((vehicleIndex) => (
                                             <option key={vehicleIndex} value={vehicleIndex}>
-                                              Veículo {vehicleIndex + 1}
+                                              {vehicleLabels.get(vehicleIndex) ?? `Veículo ${vehicleIndex + 1}`}
                                             </option>
                                           ))}
                                       </select>
@@ -788,12 +795,16 @@ export default function SavedRoutesPage() {
                       <button
                         type="button"
                         onClick={() => router.push("/routes/suggest")}
-                        className={`${button({ variant: "ghost" })} gap-2`}
+                        className={`${button()} gap-2`}
                       >
                         <Route className="h-4 w-4" />
                         Sugerir rota
                       </button>
-                      <button type="button" onClick={loadSavedRoutes} className={`${button()} gap-2`}>
+                      <button
+                        type="button"
+                        onClick={loadSavedRoutes}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyco-green bg-white px-4 py-2 text-cyco-green shadow hover:bg-cyco-light"
+                      >
                         <RotateCcw className="h-4 w-4" />
                         Atualizar
                       </button>

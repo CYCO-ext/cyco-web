@@ -1,7 +1,7 @@
 # State
 
-**Last Updated:** 2026-05-27T00:00:00-03:00
-**Current Work:** route-map - implemented and awaiting live browser UAT
+**Last Updated:** 2026-06-10T00:00:00-03:00
+**Current Work:** vehicle-name - implemented and awaiting live browser UAT
 
 ---
 
@@ -188,6 +188,13 @@
 **Reason:** The backend map endpoint returns provider GeoJSON per saved route and vehicle, and backend URLs/auth should remain behind Next.js route handlers.
 **Trade-off:** The first implementation uses online OpenStreetMap tiles and requires browser UAT for visual tile/line verification.
 **Impact:** Route map helpers normalize GeoJSON defensively, saved route cards link to the map page, the map page supports vehicle selection and metadata, and final verification should include a live backend map response.
+
+### AD-027: Route suggestion vehicles include collector-entered names (2026-06-10)
+
+**Decision:** Route suggestion vehicles now submit `vehicles[].name` with each capacity, and route result/saved-route views display vehicle names when available while keeping `vehicleIndex` for backend operations.
+**Reason:** Collectors need recognizable labels for each vehicle during route creation and review.
+**Trade-off:** The frontend assumes the backend accepts `vehicles[].name`; if the backend omits names from responses, immediate results use submitted names and persisted legacy routes fall back to vehicle index labels.
+**Impact:** Route helper types, validation, payload building, route result rendering, and saved route vehicle labels now understand vehicle names.
 
 ---
 
