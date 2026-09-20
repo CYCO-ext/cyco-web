@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import MainContent from "./components/home/MainContent";
-import { getSessionMeta } from "./lib/createCollection";
+import { getSessionMeta, isDeliverymanRole } from "./lib/createCollection";
 
 export default function WelcomePage() {
   const { data: session, status } = useSession();
@@ -20,6 +20,12 @@ export default function WelcomePage() {
   if (status === "loading" || !session) return null;
 
   const sessionMeta = getSessionMeta(session);
+
+  if (isDeliverymanRole(sessionMeta.role)) {
+    router.replace("/deliveryman");
+    return null;
+  }
+
   const userType = sessionMeta.role === "WASTE_COLLECTOR" || sessionMeta.role === "CATADOR"
     ? "WASTE_COLLECTOR"
     : "GENERATOR";

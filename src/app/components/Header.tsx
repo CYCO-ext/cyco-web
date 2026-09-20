@@ -1,11 +1,19 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { getSessionMeta, isDeliverymanRole } from "@/app/lib/createCollection";
 
 interface HeaderProps {
   centerText?: string;
 }
 
 export default function Header({ centerText }: HeaderProps) {
+  const { data: session } = useSession();
+  const sessionMeta = getSessionMeta(session);
+  const profileHref = isDeliverymanRole(sessionMeta.role) ? "/deliveryman" : "/profile";
+
   return (
     <header
       className="w-full flex items-center justify-between px-3 md:px-[30px] py-3 md:py-[21px]"
@@ -38,7 +46,7 @@ export default function Header({ centerText }: HeaderProps) {
           </span>
         )}
       </div>
-      <Link href="/profile" aria-label="Abrir perfil">
+      <Link href={profileHref} aria-label="Abrir perfil">
         <Image
           src="/Profile.png"
           alt="User"

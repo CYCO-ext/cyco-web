@@ -1,8 +1,8 @@
 "use client";
-import { Home, Recycle, Gift, Settings, LogOut, Route, User } from "lucide-react";
+import { Home, Recycle, Gift, Settings, LogOut, Route, User, ClipboardList } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { getSessionMeta, isGeneratorRole } from "@/app/lib/createCollection";
+import { getSessionMeta, isDeliverymanRole, isGeneratorRole } from "@/app/lib/createCollection";
 
 const icons = [
   { icon: <Home size={28} />, label: "Home", path: "/" },
@@ -19,8 +19,14 @@ export default function Sidebar() {
 
   const sessionMeta = getSessionMeta(session);
   const isGenerator = isGeneratorRole(sessionMeta.role);
+  const isDeliveryman = isDeliverymanRole(sessionMeta.role);
 
-  const visibleIcons = icons.filter((i) => {
+  const visibleIcons = isDeliveryman
+    ? [
+      { icon: <ClipboardList size={28} />, label: "Minhas entregas", path: "/deliveryman" },
+      { icon: <User size={28} />, label: "Perfil", path: "/profile" },
+    ]
+    : icons.filter((i) => {
     if (!isGenerator) return true;
     // hide any routes-related links for generator users
     return !(typeof i.path === "string" && i.path.startsWith("/routes"));

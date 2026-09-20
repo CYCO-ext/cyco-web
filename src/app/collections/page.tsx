@@ -7,9 +7,11 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Loader2,
   Mail,
   Phone,
   RotateCcw,
+  UserPlus,
   UserCheck,
   XCircle,
 } from "lucide-react";
@@ -18,6 +20,14 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { button } from "@/app/components/ui";
 import { getSessionMeta, isGeneratorRole } from "@/app/lib/createCollection";
+import {
+  DeliverymanProfile,
+  normalizeDeliverymen,
+  normalizeSavedRoute,
+  normalizeSavedRoutes,
+  RouteSuggestionResponse,
+  SavedRoute,
+} from "@/app/lib/routes";
 import {
   COLLECTION_STATUS_OPTIONS,
   collectCounterpartLookups,
@@ -49,7 +59,7 @@ type PageError = {
   message: string;
 };
 
-type CollectionActionKind = "accept" | "reject" | "finish" | "cancel" | "on-way";
+type CollectionActionKind = "accept" | "reject" | "finish" | "cancel" | "on-way" | "assign";
 
 function getApiError(data: unknown, fallback: string): string {
   if (typeof data === "object" && data !== null && "error" in data) {
@@ -113,6 +123,55 @@ function hasViewerConfirmed(collection: CollectionSummary, viewerRole?: ViewerRo
   if (viewerRole === "GENERATOR") return collection.generatorConfirmed;
   if (viewerRole === "WASTE_COLLECTOR") return collection.collectorConfirmed;
   return false;
+}
+
+function getDeliverymanLabel(deliveryman: DeliverymanProfile): string {
+  return [deliveryman.name, deliveryman.vehiclePlate ? `Placa ${deliveryman.vehiclePlate}` : undefined]
+    .filter(Boolean)
+    .join(" - ") || deliveryman.email || deliveryman.id;
+}
+
+function buildSingleCollectionSuggestion(collection: CollectionSummary): RouteSuggestionResponse {
+  const latitude = collection.address?.latitude ?? 0;
+  const longitude = collection.address?.longitude ?? 0;
+
+  return {
+    status: "FEASIBLE",
+    solver: {
+      engine: "MANUAL_SINGLE_COLLECTION",
+      elapsedMs: 0,
+      objectiveDistanceMeters: 0,
+      droppedStops: 0,
+    },
+    routes: [{
+      vehicleIndex: 0,
+      vehicleName: `Coleta #${collection.id.slice(0, 8)}`,
+      capacity: Math.max(collection.weight, 1),
+      totalLoad: collection.weight,
+      totalDistanceMeters: 0,
+      stops: [{
+        sequence: 0,
+        collectionRequestId: collection.id,
+        addressId: collection.addressId ?? collection.address?.id ?? collection.id,
+        street: collection.address?.street,
+        number: collection.address?.number,
+        latitude,
+        longitude,
+        demand: collection.weight,
+        accumulatedLoad: collection.weight,
+        distanceFromPreviousMeters: 0,
+      }],
+    }],
+    unassigned: [],
+  };
+}
+
+function findSingleCollectionRoute(routes: SavedRoute[], collectionId: string): SavedRoute | undefined {
+  return routes.find((route) => (
+    route.status === "OPEN" &&
+    route.assignedCollectionRequestIds.length === 1 &&
+    route.assignedCollectionRequestIds[0] === collectionId
+  ));
 }
 
 function CounterpartDetails({
@@ -208,6 +267,10 @@ function CollectionCard({
   onFinish,
   onCancel,
   onMarkOnWay,
+  deliverymen,
+  deliverymenLoading,
+  assignmentPending,
+  onAssignDeliveryman,
 }: {
   collection: CollectionSummary;
   counterpart?: CounterpartProfile;
@@ -221,12 +284,17 @@ function CollectionCard({
   onFinish: (collectionId: string) => void;
   onCancel: (collectionId: string) => void;
   onMarkOnWay: (collectionId: string) => void;
+  deliverymen: DeliverymanProfile[];
+  deliverymenLoading: boolean;
+  assignmentPending: boolean;
+  onAssignDeliveryman: (collection: CollectionSummary, deliverymanId: string) => void;
 }) {
   const showAccept = viewerRole === "WASTE_COLLECTOR" && isAcceptEligible(collection);
   const showReject = viewerRole === "WASTE_COLLECTOR" && isRejectEligible(collection);
   const showFinish = !!viewerRole && isFinishEligible(collection);
   const showCancel = !!viewerRole && isCancelEligible(collection);
   const showOnWay = viewerRole === "WASTE_COLLECTOR" && isOnWayEligible(collection);
+  const showAssignDeliveryman = viewerRole === "WASTE_COLLECTOR" && ["IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
   const viewerConfirmed = hasViewerConfirmed(collection, viewerRole);
   const actionCopy = showFinish
     ? viewerConfirmed
@@ -382,6 +450,47 @@ function CollectionCard({
           )}
         </div>
       )}
+
+      {showAssignDeliveryman && (
+        <div className="mt-4 rounded-xl border border-cyco-light bg-cyco-light/40 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-cyco-green">Entregador responsável</div>
+              <p className="mt-1 text-sm text-gray-600">
+                Coloque esta coleta no nome de um entregador cadastrado.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto]">
+              <select
+                value=""
+                onChange={(event) => {
+                  const deliverymanId = event.target.value;
+                  if (deliverymanId) onAssignDeliveryman(collection, deliverymanId);
+                }}
+                disabled={assignmentPending || deliverymenLoading || deliverymen.length === 0}
+                className="min-w-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyco-green/40 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">
+                  {deliverymenLoading
+                    ? "Buscando entregadores..."
+                    : deliverymen.length === 0
+                      ? "Nenhum entregador"
+                      : "Selecionar entregador"}
+                </option>
+                {deliverymen.map((deliveryman) => (
+                  <option key={deliveryman.id} value={deliveryman.id}>
+                    {getDeliverymanLabel(deliveryman)}
+                  </option>
+                ))}
+              </select>
+              <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-cyco-green">
+                {assignmentPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                {assignmentPending ? "Atribuindo" : "Atribuir"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -393,6 +502,8 @@ export default function CollectionsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [counterpartProfiles, setCounterpartProfiles] = useState<CounterpartProfiles>({});
+  const [deliverymen, setDeliverymen] = useState<DeliverymanProfile[]>([]);
+  const [deliverymenLoading, setDeliverymenLoading] = useState(false);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [actionPendingId, setActionPendingId] = useState<string>();
   const [actionPendingKind, setActionPendingKind] = useState<CollectionActionKind>();
@@ -407,6 +518,28 @@ export default function CollectionsPage() {
     if (isCollectorRole(sessionMeta.role)) return { key: "collectorId", value: sessionMeta.generatorId };
     return undefined;
   }, [sessionMeta.generatorId, sessionMeta.role]);
+
+  const loadDeliverymen = useCallback(async () => {
+    if (viewerRole !== "WASTE_COLLECTOR" || !sessionMeta.generatorId) {
+      setDeliverymen([]);
+      return;
+    }
+
+    setDeliverymenLoading(true);
+
+    try {
+      const headers: HeadersInit = sessionMeta.token
+        ? { authorization: `Bearer ${sessionMeta.token}` }
+        : {};
+      const response = await fetch(`/api/collectors/${sessionMeta.generatorId}/deliverymen`, { headers });
+      const data = await response.json().catch(() => null);
+      setDeliverymen(response.ok ? normalizeDeliverymen(data) : []);
+    } catch {
+      setDeliverymen([]);
+    } finally {
+      setDeliverymenLoading(false);
+    }
+  }, [sessionMeta.generatorId, sessionMeta.token, viewerRole]);
 
   const fetchCounterpartProfiles = useCallback(async (items: CollectionSummary[]) => {
     const lookups = collectCounterpartLookups(items, viewerRole);
@@ -501,7 +634,8 @@ export default function CollectionsPage() {
   useEffect(() => {
     if (status !== "authenticated") return;
     loadCollections();
-  }, [status, loadCollections]);
+    loadDeliverymen();
+  }, [status, loadCollections, loadDeliverymen]);
 
   const handleAccept = useCallback(async (collectionId: string) => {
     setActionPendingId(collectionId);
@@ -729,6 +863,106 @@ export default function CollectionsPage() {
     }
   }, [loadCollections, sessionMeta.token, viewerRole]);
 
+  const resolveSingleCollectionRoute = useCallback(async (collection: CollectionSummary): Promise<SavedRoute> => {
+    const headers: HeadersInit = sessionMeta.token
+      ? { authorization: `Bearer ${sessionMeta.token}` }
+      : {};
+
+    const savedRoutesRes = await fetch("/api/collectors/routes/saved", { headers });
+    const savedRoutesData = await savedRoutesRes.json().catch(() => null);
+    const savedRoutes = savedRoutesRes.ok ? normalizeSavedRoutes(savedRoutesData) : [];
+    const existingRoute = findSingleCollectionRoute(savedRoutes, collection.id);
+    if (existingRoute) return existingRoute;
+
+    if (!sessionMeta.generatorId) {
+      throw new Error("Não foi possível identificar o coletor autenticado.");
+    }
+
+    const saveRes = await fetch("/api/collectors/routes/save", {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        collectorId: sessionMeta.generatorId,
+        source: "ROUTE_SUGGESTION",
+        suggestion: buildSingleCollectionSuggestion(collection),
+      }),
+    });
+    const saveData = await saveRes.json().catch(() => null);
+
+    if (saveRes.status === 409) {
+      const retryRes = await fetch("/api/collectors/routes/saved", { headers });
+      const retryData = await retryRes.json().catch(() => null);
+      const retryRoute = findSingleCollectionRoute(retryRes.ok ? normalizeSavedRoutes(retryData) : [], collection.id);
+      if (retryRoute) return retryRoute;
+    }
+
+    if (!saveRes.ok) {
+      throw new Error(getApiError(saveData, "Erro ao preparar a coleta para atribuição."));
+    }
+
+    const route = normalizeSavedRoute(saveData)[0];
+    if (!route) {
+      throw new Error("Resposta da rota salva inválida.");
+    }
+
+    return route;
+  }, [sessionMeta.generatorId, sessionMeta.token]);
+
+  const handleAssignDeliveryman = useCallback(async (collection: CollectionSummary, deliverymanId: string) => {
+    if (!sessionMeta.generatorId) {
+      setActionFeedback({
+        collectionId: collection.id,
+        type: "error",
+        message: "Não foi possível identificar o coletor autenticado.",
+      });
+      return;
+    }
+
+    setActionPendingId(collection.id);
+    setActionPendingKind("assign");
+    setActionFeedback(undefined);
+
+    try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}),
+      };
+      const route = await resolveSingleCollectionRoute(collection);
+      const res = await fetch(`/api/collectors/${sessionMeta.generatorId}/routes/${route.id}/assign`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          collectorId: sessionMeta.generatorId,
+          deliverymanId,
+          vehicleIndex: 0,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao atribuir coleta ao entregador."));
+      }
+
+      setActionFeedback({
+        collectionId: collection.id,
+        type: "success",
+        message: "Coleta atribuída ao entregador.",
+      });
+    } catch (assignError) {
+      setActionFeedback({
+        collectionId: collection.id,
+        type: "error",
+        message: assignError instanceof Error ? assignError.message : "Erro ao atribuir coleta ao entregador.",
+      });
+    } finally {
+      setActionPendingId(undefined);
+      setActionPendingKind(undefined);
+    }
+  }, [resolveSingleCollectionRoute, sessionMeta.generatorId, sessionMeta.token]);
+
   if (status === "loading") {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -834,11 +1068,15 @@ export default function CollectionsPage() {
                       actionPending={actionPendingId === collection.id}
                       actionPendingKind={actionPendingId === collection.id ? actionPendingKind : undefined}
                       feedback={actionFeedback?.collectionId === collection.id ? actionFeedback : undefined}
+                      deliverymen={deliverymen}
+                      deliverymenLoading={deliverymenLoading}
+                      assignmentPending={actionPendingId === collection.id && actionPendingKind === "assign"}
                       onAccept={handleAccept}
                       onReject={handleReject}
                       onFinish={handleFinish}
                       onCancel={handleCancel}
                       onMarkOnWay={handleMarkOnWay}
+                      onAssignDeliveryman={handleAssignDeliveryman}
                     />
                   );
                 })}
