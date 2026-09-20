@@ -80,12 +80,51 @@ const initialDeliverymanForm: DeliverymanForm = {
 };
 
 function getApiError(data: unknown, fallback: string): string {
-  if (typeof data === "object" && data !== null && "error" in data) {
-    const error = (data as { error?: unknown }).error;
+  if (typeof data === "string" && data.trim()) return data;
+
+  if (typeof data === "object" && data !== null) {
+    const body = data as { message?: unknown; error?: unknown };
+    const message = body.message;
+
+    if (Array.isArray(message)) {
+      const text = message.filter((item): item is string => typeof item === "string" && item.trim().length > 0).join(", ");
+      if (text) return text;
+    }
+
+    if (typeof message === "string" && message.trim()) {
+      try {
+        const parsed = JSON.parse(message) as unknown;
+        if (typeof parsed === "object" && parsed !== null && "errors" in parsed) {
+          const errors = (parsed as { errors?: unknown }).errors;
+          if (typeof errors === "object" && errors !== null) {
+            const text = Object.values(errors)
+              .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+              .join(", ");
+            if (text) return text;
+          }
+        }
+      } catch {
+        return message;
+      }
+
+      return message;
+    }
+
+    const error = body.error;
     if (typeof error === "string" && error.trim()) return error;
   }
 
   return fallback;
+}
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function formatDateAsIso(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00.000Z`).toISOString()
+    : value;
 }
 
 function resolveProfileRole(role?: string): UserProfileRole | undefined {
@@ -406,6 +445,21 @@ export default function ProfilePage() {
       return;
     }
 
+    const phoneNumber = onlyDigits(deliverymanForm.phone);
+    const ddd = onlyDigits(deliverymanForm.ddd);
+    const ddi = onlyDigits(deliverymanForm.ddi);
+    const vehiclePlate = deliverymanForm.vehiclePlate.trim().toUpperCase();
+
+    if (deliverymanForm.password.length < 8) {
+      setDeliverymanFeedback({ type: "error", message: "A senha inicial precisa ter pelo menos 8 caracteres." });
+      return;
+    }
+
+    if (phoneNumber.length < 8 || phoneNumber.length > 9) {
+      setDeliverymanFeedback({ type: "error", message: "O telefone deve ter 8 ou 9 dígitos." });
+      return;
+    }
+
     setDeliverymanPending(true);
     setDeliverymanFeedback(undefined);
 
@@ -421,18 +475,18 @@ export default function ProfilePage() {
           email: deliverymanForm.email,
           password: deliverymanForm.password,
           name: deliverymanForm.name,
-          birthDate: deliverymanForm.birthDate,
-          licenseNumber: deliverymanForm.licenseNumber,
+          birthDate: formatDateAsIso(deliverymanForm.birthDate),
+          licenseNumber: deliverymanForm.licenseNumber.trim(),
           phone: {
-            ddi: Number(deliverymanForm.ddi),
-            ddd: Number(deliverymanForm.ddd),
-            number: deliverymanForm.phone,
+            ddi: Number(ddi),
+            ddd: Number(ddd),
+            number: phoneNumber,
           },
           vehicle: {
             id: vehicleId,
             modelId,
             colorId,
-            plate: deliverymanForm.vehiclePlate,
+            plate: vehiclePlate,
           },
         }),
       });
