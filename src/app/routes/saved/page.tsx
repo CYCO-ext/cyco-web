@@ -15,8 +15,11 @@ import {
   Map as MapIcon,
   MapPin,
   MoveRight,
+  Play,
   RotateCcw,
   Route,
+  Send,
+  UserPlus,
   Truck,
   Trash2,
   X,
@@ -34,13 +37,19 @@ import {
   normalizeCollections,
   statusLabel,
 } from "@/app/lib/collectionsPage";
-import { getSessionMeta } from "@/app/lib/createCollection";
+import { getSessionMeta, isDeliverymanRole } from "@/app/lib/createCollection";
 import {
+  buildAssignDeliverymanRequest,
+  buildFailStopRequest,
   buildMoveSavedRouteRequest,
   getVehicleDisplayName,
   formatDistanceMeters,
+  normalizeDeliveryAssignments,
+  normalizeDeliverymen,
   normalizeSavedRoute,
   normalizeSavedRoutes,
+  DeliverymanProfile,
+  RouteAssignment,
   SavedRoute,
   SuggestedRouteStop,
 } from "@/app/lib/routes";
@@ -59,6 +68,11 @@ type MoveRouteFeedback = {
   message: string;
 };
 
+type DeliveryFeedback = {
+  type: "success" | "error";
+  message: string;
+};
+
 type DraggedStop = {
   savedRouteId: string;
   collectionRequestId: string;
@@ -68,6 +82,17 @@ type DraggedStop = {
 type DropTarget = {
   savedRouteId: string;
   vehicleIndex: number;
+};
+
+type AssignmentPending = {
+  savedRouteId: string;
+  vehicleIndex: number;
+};
+
+type DeliveryPendingAction = {
+  assignmentId: string;
+  collectionRequestId?: string;
+  action: "start" | "complete" | "fail" | "finish";
 };
 
 type CollectionModalState =
@@ -111,6 +136,29 @@ function formatStopAddress(stop: SuggestedRouteStop): string {
   }
 
   return "Endereço não informado";
+}
+
+function routeAssignmentLabel(status?: string): string {
+  switch (status) {
+    case "ASSIGNED":
+      return "Atribuída";
+    case "IN_PROGRESS":
+      return "Em rota";
+    case "COMPLETED":
+      return "Concluída";
+    case "PARTIALLY_COMPLETED":
+      return "Parcial";
+    case "FAILED":
+      return "Falhou";
+    case "CANCELLED":
+      return "Cancelada";
+    default:
+      return status ?? "Sem atribuição";
+  }
+}
+
+function getDeliverymanDisplayName(deliveryman: DeliverymanProfile | undefined, fallbackId?: string): string {
+  return deliveryman?.name ?? deliveryman?.email ?? fallbackId ?? "Entregador";
 }
 
 function CollectionDetailsModal({
@@ -224,7 +272,10 @@ function SavedRouteCard({
   movePending,
   draggedStop,
   dropTarget,
+  deliverymen,
+  assignmentPending,
   onDelete,
+  onAssignDeliveryman,
   onOpenCollection,
   onMoveRequest,
   onStopDragStart,
@@ -238,7 +289,10 @@ function SavedRouteCard({
   movePending: boolean;
   draggedStop?: DraggedStop;
   dropTarget?: DropTarget;
+  deliverymen: DeliverymanProfile[];
+  assignmentPending?: AssignmentPending;
   onDelete: (id: string) => void;
+  onAssignDeliveryman: (savedRouteId: string, vehicleIndex: number, deliverymanId: string) => void;
   onOpenCollection: (id: string) => void;
   onMoveRequest: (
     savedRouteId: string,
@@ -261,6 +315,7 @@ function SavedRouteCard({
     item.vehicleIndex,
     getVehicleDisplayName(item),
   ]) ?? []);
+  const deliverymenById = new Map(deliverymen.map((deliveryman) => [deliveryman.id, deliveryman]));
   const canMoveStops = isOpen && vehicleIndexes.length > 1 && !deletePending && !movePending;
 
   return (
@@ -351,6 +406,10 @@ function SavedRouteCard({
                     draggedStop?.savedRouteId === route.id &&
                     draggedStop.sourceVehicleIndex !== vehicleRoute.vehicleIndex;
                   const vehicleLabel = getVehicleDisplayName(vehicleRoute);
+                  const assignment = route.assignments.find((item) => item.vehicleIndex === vehicleRoute.vehicleIndex);
+                  const pendingAssignment = assignmentPending?.savedRouteId === route.id &&
+                    assignmentPending.vehicleIndex === vehicleRoute.vehicleIndex;
+                  const canAssign = isOpen && !assignment && deliverymen.length > 0 && !pendingAssignment;
 
                   return (
                   <details
@@ -402,6 +461,48 @@ function SavedRouteCard({
                         <span>Capacidade: {vehicleRoute.capacity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
                         <span>Carga total: {vehicleRoute.totalLoad.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
                         <span>Distância: {formatDistanceMeters(vehicleRoute.totalDistanceMeters)}</span>
+                      </div>
+
+                      <div className="grid gap-3 rounded-lg border border-gray-100 bg-white p-3 md:grid-cols-[1fr_auto] md:items-center">
+                        <div className="min-w-0 text-sm">
+                          <div className="font-semibold text-gray-900">
+                            {assignment
+                              ? getDeliverymanDisplayName(deliverymenById.get(assignment.deliverymanId), assignment.deliverymanId)
+                              : "Sem entregador"}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {assignment
+                              ? `${routeAssignmentLabel(assignment.status)} • ${assignment.assignedCollectionRequestIds.length} parada(s)`
+                              : "Veículo disponível para atribuição"}
+                          </div>
+                        </div>
+                        <label className="flex min-w-0 items-center gap-2">
+                          {pendingAssignment ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-cyco-green" />
+                          ) : (
+                            <UserPlus className="h-4 w-4 text-cyco-green" />
+                          )}
+                          <select
+                            value=""
+                            disabled={!canAssign}
+                            onChange={(event) => {
+                              const deliverymanId = event.target.value;
+                              if (!deliverymanId) return;
+                              onAssignDeliveryman(route.id, vehicleRoute.vehicleIndex, deliverymanId);
+                            }}
+                            className="min-w-0 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label={`Atribuir entregador para ${vehicleLabel}`}
+                          >
+                            <option value="">
+                              {assignment ? "Atribuído" : deliverymen.length > 0 ? "Atribuir..." : "Sem entregadores"}
+                            </option>
+                            {deliverymen.map((deliveryman) => (
+                              <option key={deliveryman.id} value={deliveryman.id}>
+                                {getDeliverymanDisplayName(deliveryman, deliveryman.id)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
 
                       {vehicleRoute.stops.length === 0 ? (
@@ -525,18 +626,168 @@ function SavedRouteCard({
   );
 }
 
+function DeliveryAssignmentsPanel({
+  assignments,
+  pendingAction,
+  failReasons,
+  onFailReasonChange,
+  onStart,
+  onCompleteStop,
+  onFailStop,
+  onFinish,
+}: {
+  assignments: RouteAssignment[];
+  pendingAction?: DeliveryPendingAction;
+  failReasons: Record<string, string>;
+  onFailReasonChange: (key: string, value: string) => void;
+  onStart: (assignment: RouteAssignment) => void;
+  onCompleteStop: (assignment: RouteAssignment, collectionRequestId: string) => void;
+  onFailStop: (assignment: RouteAssignment, collectionRequestId: string) => void;
+  onFinish: (assignment: RouteAssignment) => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      {assignments.map((assignment) => {
+        const canStart = assignment.status === "ASSIGNED";
+        const canWorkStops = assignment.status === "IN_PROGRESS";
+        const canFinish = assignment.status === "IN_PROGRESS" || assignment.status === "ASSIGNED";
+        const isAssignmentPending = pendingAction?.assignmentId === assignment.id;
+        const isStarting = isAssignmentPending && pendingAction?.action === "start";
+        const isFinishing = isAssignmentPending && pendingAction?.action === "finish";
+
+        return (
+          <article key={assignment.id ?? `${assignment.savedRouteId}-${assignment.vehicleIndex}`} className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Veículo {assignment.vehicleIndex + 1}
+                  </h2>
+                  <span className="rounded-full bg-cyco-light px-2.5 py-1 text-xs font-medium text-cyco-green">
+                    {routeAssignmentLabel(assignment.status)}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-xs text-gray-500">Rota: {assignment.savedRouteId ?? "Nao informada"}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!canStart || isAssignmentPending}
+                  onClick={() => onStart(assignment)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyco-green bg-white px-4 py-2 text-sm font-semibold text-cyco-green shadow-sm hover:bg-cyco-green hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isStarting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  Iniciar
+                </button>
+                <button
+                  type="button"
+                  disabled={!canFinish || isAssignmentPending}
+                  onClick={() => onFinish(assignment)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isFinishing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Finalizar
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {assignment.assignedCollectionRequestIds.map((collectionRequestId) => {
+                const isCompleted = assignment.completedCollectionRequestIds.includes(collectionRequestId);
+                const reasonKey = `${assignment.id}:${collectionRequestId}`;
+                const isStopPending = pendingAction?.assignmentId === assignment.id &&
+                  pendingAction?.collectionRequestId === collectionRequestId;
+                const isCompleting = isStopPending && pendingAction?.action === "complete";
+                const isFailing = isStopPending && pendingAction?.action === "fail";
+
+                return (
+                  <div key={collectionRequestId} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Coleta #{collectionRequestId.slice(0, 8)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {isCompleted ? "Concluída" : canWorkStops ? "Pendente" : "Aguardando início"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={!canWorkStops || isCompleted || isStopPending}
+                          onClick={() => onCompleteStop(assignment, collectionRequestId)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyco-green px-3 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isCompleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+                          Concluir
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                      <input
+                        value={failReasons[reasonKey] ?? ""}
+                        onChange={(event) => onFailReasonChange(reasonKey, event.target.value)}
+                        disabled={!canWorkStops || isCompleted}
+                        placeholder="Motivo da falha"
+                        className="min-w-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyco-green/40 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      <button
+                        type="button"
+                        disabled={!canWorkStops || isCompleted || isStopPending}
+                        onClick={() => onFailStop(assignment, collectionRequestId)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-700 bg-white px-3 py-2 text-xs font-semibold text-red-800 shadow-sm hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isFailing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <AlertCircle className="h-3.5 w-3.5" />
+                        )}
+                        Falhou
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function SavedRoutesPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const sessionMeta = getSessionMeta(session);
   const isCollector = isCollectorRole(sessionMeta.role);
+  const isDeliveryman = isDeliverymanRole(sessionMeta.role);
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
+  const [deliverymen, setDeliverymen] = useState<DeliverymanProfile[]>([]);
+  const [deliveryAssignments, setDeliveryAssignments] = useState<RouteAssignment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deliverymenLoading, setDeliverymenLoading] = useState(false);
   const [error, setError] = useState<PageError>();
   const [deletePendingId, setDeletePendingId] = useState<string>();
   const [deleteFeedback, setDeleteFeedback] = useState<DeleteRouteFeedback>();
   const [movePending, setMovePending] = useState<DraggedStop>();
   const [moveFeedback, setMoveFeedback] = useState<MoveRouteFeedback>();
+  const [assignmentPending, setAssignmentPending] = useState<AssignmentPending>();
+  const [deliveryPendingAction, setDeliveryPendingAction] = useState<DeliveryPendingAction>();
+  const [deliveryFeedback, setDeliveryFeedback] = useState<DeliveryFeedback>();
+  const [failReasons, setFailReasons] = useState<Record<string, string>>({});
   const [draggedStop, setDraggedStop] = useState<DraggedStop>();
   const [dropTarget, setDropTarget] = useState<DropTarget>();
   const [collectionModal, setCollectionModal] = useState<CollectionModalState>({ status: "idle" });
@@ -579,10 +830,68 @@ export default function SavedRoutesPage() {
     }
   }, [headers, isCollector]);
 
+  const loadDeliverymen = useCallback(async () => {
+    if (!isCollector || !sessionMeta.generatorId) {
+      setDeliverymen([]);
+      return;
+    }
+
+    setDeliverymenLoading(true);
+
+    try {
+      const res = await fetch(`/api/collectors/${sessionMeta.generatorId}/deliverymen`, { headers });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao buscar entregadores."));
+      }
+
+      setDeliverymen(normalizeDeliverymen(data));
+    } catch {
+      setDeliverymen([]);
+    } finally {
+      setDeliverymenLoading(false);
+    }
+  }, [headers, isCollector, sessionMeta.generatorId]);
+
+  const loadDeliveryAssignments = useCallback(async () => {
+    if (!isDeliveryman || !sessionMeta.generatorId) {
+      setDeliveryAssignments([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+
+    try {
+      const res = await fetch(`/api/deliverymen/${sessionMeta.generatorId}/assignments`, { headers });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao buscar rotas atribuídas."));
+      }
+
+      setDeliveryAssignments(normalizeDeliveryAssignments(data));
+    } catch (err) {
+      setDeliveryAssignments([]);
+      setError({
+        message: err instanceof Error ? err.message : "Erro ao buscar rotas atribuídas.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [headers, isDeliveryman, sessionMeta.generatorId]);
+
   useEffect(() => {
     if (status !== "authenticated" || !isCollector) return;
     loadSavedRoutes();
-  }, [isCollector, loadSavedRoutes, status]);
+    loadDeliverymen();
+  }, [isCollector, loadDeliverymen, loadSavedRoutes, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !isDeliveryman) return;
+    loadDeliveryAssignments();
+  }, [isDeliveryman, loadDeliveryAssignments, status]);
 
   async function deleteSavedRoute(savedRouteId: string) {
     setDeletePendingId(savedRouteId);
@@ -690,6 +999,172 @@ export default function SavedRoutesPage() {
     }
   }
 
+  async function assignDeliveryman(savedRouteId: string, vehicleIndex: number, deliverymanId: string) {
+    const result = buildAssignDeliverymanRequest(sessionMeta.generatorId, deliverymanId, vehicleIndex);
+
+    if (!result.payload) {
+      setMoveFeedback({
+        type: "error",
+        message: result.error ?? "Não foi possível atribuir entregador.",
+      });
+      return;
+    }
+
+    setAssignmentPending({ savedRouteId, vehicleIndex });
+    setMoveFeedback(undefined);
+    setDeleteFeedback(undefined);
+
+    try {
+      const res = await fetch(`/api/collectors/${result.payload.collectorId}/routes/${savedRouteId}/assign`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(result.payload),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao atribuir entregador."));
+      }
+
+      const [assignment] = normalizeDeliveryAssignments([data]);
+      if (assignment) {
+        setRoutes((current) => current.map((route) => (
+          route.id !== savedRouteId
+            ? route
+            : {
+              ...route,
+              assignments: [
+                ...route.assignments.filter((item) => item.vehicleIndex !== vehicleIndex),
+                assignment,
+              ],
+            }
+        )));
+      } else {
+        await loadSavedRoutes();
+      }
+
+      setMoveFeedback({
+        type: "success",
+        message: "Entregador atribuído ao veículo.",
+      });
+    } catch (err) {
+      setMoveFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Erro ao atribuir entregador.",
+      });
+    } finally {
+      setAssignmentPending(undefined);
+    }
+  }
+
+  function replaceDeliveryAssignment(updated: RouteAssignment) {
+    setDeliveryAssignments((current) => current.map((assignment) => (
+      assignment.id === updated.id ? updated : assignment
+    )));
+  }
+
+  async function runDeliveryAction(
+    assignment: RouteAssignment,
+    action: DeliveryPendingAction["action"],
+    path: string,
+    body?: unknown,
+    collectionRequestId?: string,
+  ) {
+    if (!assignment.id || !sessionMeta.generatorId) {
+      setDeliveryFeedback({ type: "error", message: "Rota do entregador inválida." });
+      return;
+    }
+
+    setDeliveryPendingAction({ assignmentId: assignment.id, collectionRequestId, action });
+    setDeliveryFeedback(undefined);
+
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: {
+          ...headers,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao atualizar rota."));
+      }
+
+      const [updated] = normalizeDeliveryAssignments([data]);
+      if (updated) {
+        replaceDeliveryAssignment(updated);
+      } else {
+        await loadDeliveryAssignments();
+      }
+
+      setDeliveryFeedback({ type: "success", message: "Rota atualizada." });
+    } catch (err) {
+      setDeliveryFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Erro ao atualizar rota.",
+      });
+    } finally {
+      setDeliveryPendingAction(undefined);
+    }
+  }
+
+  function startDeliveryAssignment(assignment: RouteAssignment) {
+    if (!assignment.id || !sessionMeta.generatorId) return;
+    runDeliveryAction(
+      assignment,
+      "start",
+      `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/start`,
+    );
+  }
+
+  function completeDeliveryStop(assignment: RouteAssignment, collectionRequestId: string) {
+    if (!assignment.id || !sessionMeta.generatorId) return;
+    runDeliveryAction(
+      assignment,
+      "complete",
+      `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/stops/${collectionRequestId}/complete`,
+      undefined,
+      collectionRequestId,
+    );
+  }
+
+  function failDeliveryStop(assignment: RouteAssignment, collectionRequestId: string) {
+    if (!assignment.id || !sessionMeta.generatorId) return;
+    const reasonKey = `${assignment.id}:${collectionRequestId}`;
+    const result = buildFailStopRequest(failReasons[reasonKey] ?? "");
+
+    if (!result.payload) {
+      setDeliveryFeedback({
+        type: "error",
+        message: result.error ?? "Não foi possível marcar falha.",
+      });
+      return;
+    }
+
+    runDeliveryAction(
+      assignment,
+      "fail",
+      `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/stops/${collectionRequestId}/fail`,
+      result.payload,
+      collectionRequestId,
+    );
+  }
+
+  function finishDeliveryAssignment(assignment: RouteAssignment) {
+    if (!assignment.id || !sessionMeta.generatorId) return;
+    runDeliveryAction(
+      assignment,
+      "finish",
+      `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/finish`,
+    );
+  }
+
   function handleStopDragStart(stop: DraggedStop) {
     if (movePending || deletePendingId === stop.savedRouteId) return;
     setDraggedStop(stop);
@@ -776,11 +1251,78 @@ export default function SavedRoutesPage() {
 
         <main className="flex flex-1 flex-col overflow-y-auto p-4 md:p-8">
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-            {!isCollector ? (
+            {!isCollector && !isDeliveryman ? (
               <section className="rounded-2xl border border-amber-100 bg-amber-50 p-6 text-amber-900">
-                <h1 className="text-lg font-semibold">Acesso exclusivo para coletores</h1>
-                <p className="mt-2 text-sm">Entre com um perfil de coletor para ver rotas salvas.</p>
+                <h1 className="text-lg font-semibold">Acesso exclusivo para operação de rotas</h1>
+                <p className="mt-2 text-sm">Entre como coletor ou entregador para ver rotas.</p>
               </section>
+            ) : isDeliveryman ? (
+              <>
+                <section className="rounded-2xl bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h1 className="text-xl font-semibold text-gray-900">Minhas rotas</h1>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Execute as paradas atribuídas ao seu veículo.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={loadDeliveryAssignments}
+                      className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-cyco-green bg-white px-4 py-2 text-cyco-green shadow hover:bg-cyco-light"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Atualizar
+                    </button>
+                  </div>
+                </section>
+
+                {error && (
+                  <section className="flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {error.message}
+                  </section>
+                )}
+
+                {deliveryFeedback && (
+                  <section
+                    className={`flex items-start gap-2 rounded-2xl border p-5 text-sm ${
+                      deliveryFeedback.type === "success"
+                        ? "border-green-100 bg-green-50 text-green-700"
+                        : "border-red-100 bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {deliveryFeedback.type === "success" ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    {deliveryFeedback.message}
+                  </section>
+                )}
+
+                {loading ? (
+                  <section className="flex items-center gap-2 rounded-2xl bg-white p-5 text-sm text-gray-600 shadow-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Buscando rotas atribuídas...
+                  </section>
+                ) : deliveryAssignments.length === 0 && !error ? (
+                  <section className="rounded-2xl bg-white p-5 text-sm text-gray-600 shadow-sm">
+                    Nenhuma rota atribuída encontrada.
+                  </section>
+                ) : (
+                  <DeliveryAssignmentsPanel
+                    assignments={deliveryAssignments}
+                    pendingAction={deliveryPendingAction}
+                    failReasons={failReasons}
+                    onFailReasonChange={(key, value) => setFailReasons((current) => ({ ...current, [key]: value }))}
+                    onStart={startDeliveryAssignment}
+                    onCompleteStop={completeDeliveryStop}
+                    onFailStop={failDeliveryStop}
+                    onFinish={finishDeliveryAssignment}
+                  />
+                )}
+              </>
             ) : (
               <>
                 <section className="rounded-2xl bg-white p-5 shadow-sm">
@@ -788,8 +1330,14 @@ export default function SavedRoutesPage() {
                     <div>
                       <h1 className="text-xl font-semibold text-gray-900">Rotas salvas</h1>
                       <p className="mt-1 text-sm text-gray-600">
-                        Acompanhe rotas planejadas e abra os detalhes por veículo.
+                        Acompanhe rotas planejadas e atribua veículos aos entregadores.
                       </p>
+                      {deliverymenLoading && (
+                        <p className="mt-1 inline-flex items-center gap-1 text-xs text-gray-500">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Buscando entregadores...
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -872,7 +1420,10 @@ export default function SavedRoutesPage() {
                         movePending={movePending?.savedRouteId === route.id}
                         draggedStop={draggedStop}
                         dropTarget={dropTarget}
+                        deliverymen={deliverymen}
+                        assignmentPending={assignmentPending}
                         onDelete={deleteSavedRoute}
+                        onAssignDeliveryman={assignDeliveryman}
                         onOpenCollection={openCollectionDetails}
                         onMoveRequest={moveSavedRouteRequest}
                         onStopDragStart={handleStopDragStart}

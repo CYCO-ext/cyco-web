@@ -9,7 +9,7 @@ export const loginSchema = z.object({
 export const registerStep1Schema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(8, { message: "A senha deve ter no mínimo 8 caracteres" }),
-  role: z.enum(["CATADOR", "GERADOR"]),
+  role: z.enum(["CATADOR", "GERADOR", "ENTREGADOR"]),
 });
 
 export const extraFieldsSchema = z.object({

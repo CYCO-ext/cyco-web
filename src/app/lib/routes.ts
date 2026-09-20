@@ -88,12 +88,60 @@ export interface MoveSavedRouteRequestPayload {
   targetVehicleIndex: number;
 }
 
+export type RouteAssignmentStatus =
+  | "ASSIGNED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "PARTIALLY_COMPLETED"
+  | "FAILED"
+  | "CANCELLED"
+  | string;
+
+export interface RouteAssignment {
+  id?: string;
+  collectorId?: string;
+  deliverymanId: string;
+  savedRouteId?: string;
+  vehicleIndex: number;
+  status: RouteAssignmentStatus;
+  assignedCollectionRequestIds: string[];
+  completedCollectionRequestIds: string[];
+  assignedAt?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  updatedAt?: string;
+}
+
+export interface DeliverymanProfile {
+  id: string;
+  collectorId?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  licenseNumber?: string;
+  vehicleId?: string;
+  vehiclePlate?: string;
+  active?: boolean;
+}
+
+export interface AssignDeliverymanRequestPayload {
+  collectorId: string;
+  deliverymanId: string;
+  vehicleIndex: number;
+}
+
+export interface FailStopRequestPayload {
+  failureReason: string;
+  note?: string;
+}
+
 export interface SavedRoute {
   id: string;
   collectorId: string;
   status: string;
   fingerprint?: string;
   assignedCollectionRequestIds: string[];
+  assignments: RouteAssignment[];
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
@@ -390,6 +438,51 @@ export function buildMoveSavedRouteRequest(
   };
 }
 
+export function buildAssignDeliverymanRequest(
+  collectorId: string | undefined,
+  deliverymanId: string,
+  vehicleIndex: number,
+): { payload?: AssignDeliverymanRequestPayload; error?: string } {
+  if (!collectorId) {
+    return { error: "Não foi possível identificar o coletor autenticado." };
+  }
+
+  const normalizedDeliverymanId = deliverymanId.trim();
+  if (!normalizedDeliverymanId) {
+    return { error: "Selecione um entregador." };
+  }
+
+  if (!Number.isInteger(vehicleIndex) || vehicleIndex < 0) {
+    return { error: "Veículo inválido." };
+  }
+
+  return {
+    payload: {
+      collectorId,
+      deliverymanId: normalizedDeliverymanId,
+      vehicleIndex,
+    },
+  };
+}
+
+export function buildFailStopRequest(
+  failureReason: string,
+  note?: string,
+): { payload?: FailStopRequestPayload; error?: string } {
+  const normalizedReason = failureReason.trim();
+  if (!normalizedReason) {
+    return { error: "Informe o motivo da falha." };
+  }
+
+  const normalizedNote = note?.trim();
+  return {
+    payload: {
+      failureReason: normalizedReason,
+      ...(normalizedNote ? { note: normalizedNote } : {}),
+    },
+  };
+}
+
 export function normalizeSavedRoutes(response: unknown): SavedRoute[] {
   if (!Array.isArray(response)) return [];
 
@@ -418,11 +511,51 @@ export function normalizeSavedRoute(response: unknown): SavedRoute[] {
     status,
     fingerprint: stringFrom(response.fingerprint),
     assignedCollectionRequestIds,
+    assignments: normalizeRouteAssignments(response.assignments),
     createdAt,
     updatedAt,
     closedAt: stringFrom(response.closedAt) ?? null,
     suggestion: normalizeRouteSuggestionResponse(response.suggestion),
   }];
+}
+
+export function normalizeDeliverymen(response: unknown): DeliverymanProfile[] {
+  const rawList = Array.isArray(response)
+    ? response
+    : isRecord(response) && Array.isArray(response.data)
+      ? response.data
+      : isRecord(response) && Array.isArray(response.deliverymen)
+        ? response.deliverymen
+        : [];
+
+  return rawList.flatMap((item) => {
+    if (!isRecord(item)) return [];
+
+    const id = stringFrom(item.id) ?? stringFrom(item.deliverymanId);
+    if (!id) return [];
+
+    return [{
+      id,
+      collectorId: stringFrom(item.collectorId) ?? stringFrom(item.wasteCollectorId),
+      name: stringFrom(item.name),
+      email: stringFrom(item.email),
+      phone: stringFrom(item.phone),
+      licenseNumber: stringFrom(item.licenseNumber),
+      vehicleId: stringFrom(item.vehicleId),
+      vehiclePlate: stringFrom(item.vehiclePlate),
+      active: typeof item.active === "boolean" ? item.active : undefined,
+    }];
+  });
+}
+
+export function normalizeDeliveryAssignments(response: unknown): RouteAssignment[] {
+  const rawList = Array.isArray(response)
+    ? response
+    : isRecord(response) && Array.isArray(response.assignments)
+      ? response.assignments
+      : [];
+
+  return rawList.flatMap(normalizeRouteAssignment);
 }
 
 export function normalizeRouteMapResponse(response: unknown): RouteMapResponse | undefined {
@@ -620,6 +753,44 @@ function normalizeRouteMapItem(value: unknown): RouteMapItem[] {
     reused: typeof value.reused === "boolean" ? value.reused : undefined,
     geoJson: normalizeRouteMapGeoJson(value.geoJson),
     createdAt: stringFrom(value.createdAt),
+    updatedAt: stringFrom(value.updatedAt),
+  }];
+}
+
+function normalizeRouteAssignments(value: unknown): RouteAssignment[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap(normalizeRouteAssignment);
+}
+
+function normalizeRouteAssignment(value: unknown): RouteAssignment[] {
+  if (!isRecord(value)) return [];
+
+  const deliverymanId = stringFrom(value.deliverymanId);
+  const vehicleIndex = numberFrom(value.vehicleIndex);
+  if (!deliverymanId || vehicleIndex === undefined || !Number.isInteger(vehicleIndex) || vehicleIndex < 0) {
+    return [];
+  }
+
+  const assignedCollectionRequestIds = Array.isArray(value.assignedCollectionRequestIds)
+    ? value.assignedCollectionRequestIds.flatMap((item) => stringFrom(item) ? [stringFrom(item)!] : [])
+    : [];
+  const completedCollectionRequestIds = Array.isArray(value.completedCollectionRequestIds)
+    ? value.completedCollectionRequestIds.flatMap((item) => stringFrom(item) ? [stringFrom(item)!] : [])
+    : [];
+
+  return [{
+    id: stringFrom(value.id),
+    collectorId: stringFrom(value.collectorId),
+    deliverymanId,
+    savedRouteId: stringFrom(value.savedRouteId),
+    vehicleIndex,
+    status: stringFrom(value.status) ?? "ASSIGNED",
+    assignedCollectionRequestIds,
+    completedCollectionRequestIds,
+    assignedAt: stringFrom(value.assignedAt),
+    startedAt: stringFrom(value.startedAt) ?? null,
+    completedAt: stringFrom(value.completedAt) ?? null,
     updatedAt: stringFrom(value.updatedAt),
   }];
 }

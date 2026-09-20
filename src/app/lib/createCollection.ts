@@ -119,6 +119,11 @@ export function isGeneratorRole(role?: string): boolean {
   return ["GERADOR", "GENERATOR"].includes(role.toUpperCase());
 }
 
+export function isDeliverymanRole(role?: string): boolean {
+  if (!role) return false;
+  return ["ENTREGADOR", "DELIVERYMAN"].includes(role.toUpperCase());
+}
+
 export function sanitizeZipCode(value: string): string {
   return value.replace(/\D/g, "").slice(0, 8);
 }

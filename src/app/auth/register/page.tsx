@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Recycle, Factory } from "lucide-react";
+import { Mail, Lock, Recycle, Factory, Truck } from "lucide-react";
 import { registerSchema, RegisterSchemaType } from "../../lib/schemas";
 import AuthLayout from "../../components/authLayout";
 import { button, Input, MaterialDropdown } from "../../components/ui";
@@ -137,6 +137,25 @@ export default function RegisterStep1() {
         }
       }
 
+      if (data.role === "ENTREGADOR") {
+        payload = {
+          email: data.email,
+          password: data.password,
+          name: `${data.firstName} ${data.lastName}`,
+          phone: {
+            ddd: Number(data.ddd),
+            ddi: Number(data.ddi),
+            number: data.phone,
+          },
+          address: {
+            zipCode: data.cep,
+            number: data.number,
+            complement: data.complement,
+          },
+          document: data.document,
+        };
+      }
+
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -196,7 +215,7 @@ export default function RegisterStep1() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <RoleCard
                 selected={role === "CATADOR"}
                 onClick={() =>
@@ -212,6 +231,14 @@ export default function RegisterStep1() {
                 }
                 label="Gerador"
                 icon={<Factory />}
+              />
+              <RoleCard
+                selected={role === "ENTREGADOR"}
+                onClick={() =>
+                  setValue("role", "ENTREGADOR", { shouldValidate: true })
+                }
+                label="Entregador"
+                icon={<Truck />}
               />
             </div>
 
