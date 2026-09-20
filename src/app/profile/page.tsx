@@ -31,6 +31,7 @@ import {
   UserProfileRole,
   UserProfileView,
 } from "@/app/lib/userProfile";
+import { DeliverymanProfile, normalizeDeliverymen } from "@/app/lib/routes";
 
 type ProfileState =
   | { status: "idle" | "loading" }
@@ -65,6 +66,8 @@ type DeliverymanForm = {
   vehicleOption: string;
   vehiclePlate: string;
 };
+
+type DeliverymanTab = "create" | "list";
 
 const initialDeliverymanForm: DeliverymanForm = {
   name: "",
@@ -282,6 +285,142 @@ function DeliverymanRegistrationSection({
   );
 }
 
+function DeliverymenListSection({
+  deliverymen,
+  loading,
+  onRefresh,
+}: {
+  deliverymen: DeliverymanProfile[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <span className="rounded-xl bg-cyco-light p-2 text-cyco-green">
+            <User className="h-5 w-5" />
+          </span>
+          <h2 className="text-base font-semibold text-gray-900">Entregadores cadastrados</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-cyco-green bg-white px-3 py-2 text-sm font-semibold text-cyco-green hover:bg-cyco-light"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Atualizar
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Buscando entregadores...
+        </div>
+      ) : deliverymen.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-500">
+          Nenhum entregador cadastrado.
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {deliverymen.map((deliveryman) => (
+            <article
+              key={deliveryman.id}
+              className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4 md:grid-cols-[1fr_auto] md:items-center"
+            >
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-gray-900">
+                  {deliveryman.name ?? deliveryman.email ?? deliveryman.id}
+                </h3>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                  {deliveryman.email && <span>{deliveryman.email}</span>}
+                  {deliveryman.phone && <span>{deliveryman.phone}</span>}
+                  {deliveryman.licenseNumber && <span>CNH {deliveryman.licenseNumber}</span>}
+                </div>
+              </div>
+              <div className="grid gap-1 text-xs text-gray-500 md:text-right">
+                {deliveryman.vehiclePlate && <span>Placa {deliveryman.vehiclePlate}</span>}
+                <span>ID {deliveryman.id.slice(0, 8)}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DeliverymanManagementSection({
+  activeTab,
+  form,
+  feedback,
+  pending,
+  vehicles,
+  deliverymen,
+  deliverymenLoading,
+  onTabChange,
+  onFormChange,
+  onSubmit,
+  onRefresh,
+}: {
+  activeTab: DeliverymanTab;
+  form: DeliverymanForm;
+  feedback?: Feedback;
+  pending: boolean;
+  vehicles: VehicleOption[];
+  deliverymen: DeliverymanProfile[];
+  deliverymenLoading: boolean;
+  onTabChange: (tab: DeliverymanTab) => void;
+  onFormChange: (field: keyof DeliverymanForm, value: string) => void;
+  onSubmit: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="grid gap-3">
+      <div className="flex w-fit rounded-xl bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => onTabChange("create")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            activeTab === "create" ? "bg-cyco-green text-white" : "text-gray-600 hover:bg-cyco-light"
+          }`}
+        >
+          <UserPlus className="h-4 w-4" />
+          Cadastrar
+        </button>
+        <button
+          type="button"
+          onClick={() => onTabChange("list")}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            activeTab === "list" ? "bg-cyco-green text-white" : "text-gray-600 hover:bg-cyco-light"
+          }`}
+        >
+          <User className="h-4 w-4" />
+          Entregadores
+        </button>
+      </div>
+
+      {activeTab === "create" ? (
+        <DeliverymanRegistrationSection
+          form={form}
+          feedback={feedback}
+          pending={pending}
+          vehicles={vehicles}
+          onChange={onFormChange}
+          onSubmit={onSubmit}
+        />
+      ) : (
+        <DeliverymenListSection
+          deliverymen={deliverymen}
+          loading={deliverymenLoading}
+          onRefresh={onRefresh}
+        />
+      )}
+    </section>
+  );
+}
+
 function ProfileContent({ profile }: { profile: UserProfileView }) {
   return (
     <>
@@ -355,6 +494,9 @@ export default function ProfilePage() {
   const [deliverymanForm, setDeliverymanForm] = useState<DeliverymanForm>(initialDeliverymanForm);
   const [deliverymanFeedback, setDeliverymanFeedback] = useState<Feedback>();
   const [deliverymanPending, setDeliverymanPending] = useState(false);
+  const [deliverymen, setDeliverymen] = useState<DeliverymanProfile[]>([]);
+  const [deliverymenLoading, setDeliverymenLoading] = useState(false);
+  const [deliverymanTab, setDeliverymanTab] = useState<DeliverymanTab>("create");
 
   const loadProfile = useCallback(async () => {
     if (!sessionMeta.generatorId) {
@@ -413,6 +555,28 @@ export default function ProfilePage() {
       setVehicles([]);
     }
   }, [profileRole, sessionMeta.token]);
+
+  const loadDeliverymen = useCallback(async () => {
+    if (profileRole !== "WASTE_COLLECTOR" || !sessionMeta.generatorId) {
+      setDeliverymen([]);
+      return;
+    }
+
+    setDeliverymenLoading(true);
+
+    try {
+      const headers: HeadersInit = sessionMeta.token
+        ? { authorization: `Bearer ${sessionMeta.token}` }
+        : {};
+      const response = await fetch(`/api/collectors/${sessionMeta.generatorId}/deliverymen`, { headers });
+      const data = await response.json().catch(() => null);
+      setDeliverymen(response.ok ? normalizeDeliverymen(data) : []);
+    } catch {
+      setDeliverymen([]);
+    } finally {
+      setDeliverymenLoading(false);
+    }
+  }, [profileRole, sessionMeta.generatorId, sessionMeta.token]);
 
   function updateDeliverymanForm(field: keyof DeliverymanForm, value: string) {
     setDeliverymanForm((current) => ({ ...current, [field]: value }));
@@ -498,6 +662,8 @@ export default function ProfilePage() {
 
       setDeliverymanForm(initialDeliverymanForm);
       setDeliverymanFeedback({ type: "success", message: "Entregador cadastrado." });
+      setDeliverymanTab("list");
+      await loadDeliverymen();
     } catch (error) {
       setDeliverymanFeedback({
         type: "error",
@@ -518,7 +684,8 @@ export default function ProfilePage() {
     if (status !== "authenticated") return;
     loadProfile();
     loadVehicles();
-  }, [loadProfile, loadVehicles, status]);
+    loadDeliverymen();
+  }, [loadDeliverymen, loadProfile, loadVehicles, status]);
 
   if (status === "loading") {
     return (
@@ -564,13 +731,18 @@ export default function ProfilePage() {
               <>
                 <ProfileContent profile={state.profile} />
                 {profileRole === "WASTE_COLLECTOR" && (
-                  <DeliverymanRegistrationSection
+                  <DeliverymanManagementSection
+                    activeTab={deliverymanTab}
                     form={deliverymanForm}
                     feedback={deliverymanFeedback}
                     pending={deliverymanPending}
                     vehicles={vehicles}
-                    onChange={updateDeliverymanForm}
+                    deliverymen={deliverymen}
+                    deliverymenLoading={deliverymenLoading}
+                    onTabChange={setDeliverymanTab}
+                    onFormChange={updateDeliverymanForm}
                     onSubmit={createDeliveryman}
+                    onRefresh={loadDeliverymen}
                   />
                 )}
               </>
