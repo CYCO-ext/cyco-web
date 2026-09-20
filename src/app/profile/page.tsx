@@ -7,17 +7,21 @@ import { useSession } from "next-auth/react";
 import {
   AlertCircle,
   Building2,
+  CheckCircle2,
   Home,
   IdCard,
+  Loader2,
   Mail,
   Package,
   Phone,
   RotateCcw,
   User,
+  UserPlus,
 } from "lucide-react";
 
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import { button, Input } from "@/app/components/ui";
 import { getSessionMeta, isGeneratorRole } from "@/app/lib/createCollection";
 import { isCollectorRole } from "@/app/lib/collectionsPage";
 import {
@@ -33,6 +37,48 @@ type ProfileState =
   | { status: "ready"; profile: UserProfileView }
   | { status: "error"; message: string };
 
+type Feedback = {
+  type: "success" | "error";
+  message: string;
+};
+
+type VehicleOption = {
+  id: string;
+  modelId?: string;
+  colorId?: string;
+  brand?: string;
+  model?: string;
+  color?: string;
+  type?: string;
+  year?: number;
+};
+
+type DeliverymanForm = {
+  name: string;
+  email: string;
+  password: string;
+  birthDate: string;
+  ddi: string;
+  ddd: string;
+  phone: string;
+  licenseNumber: string;
+  vehicleOption: string;
+  vehiclePlate: string;
+};
+
+const initialDeliverymanForm: DeliverymanForm = {
+  name: "",
+  email: "",
+  password: "",
+  birthDate: "",
+  ddi: "55",
+  ddd: "",
+  phone: "",
+  licenseNumber: "",
+  vehicleOption: "",
+  vehiclePlate: "",
+};
+
 function getApiError(data: unknown, fallback: string): string {
   if (typeof data === "object" && data !== null && "error" in data) {
     const error = (data as { error?: unknown }).error;
@@ -46,6 +92,10 @@ function resolveProfileRole(role?: string): UserProfileRole | undefined {
   if (isGeneratorRole(role)) return "GENERATOR";
   if (isCollectorRole(role)) return "WASTE_COLLECTOR";
   return undefined;
+}
+
+function getVehicleOptionLabel(vehicle: VehicleOption): string {
+  return [vehicle.brand, vehicle.model, vehicle.color, vehicle.year].filter(Boolean).join(" - ") || vehicle.id;
 }
 
 function DetailSection({
@@ -102,6 +152,92 @@ function AddressSection({ addresses }: { addresses: ProfileAddressView[] }) {
             </dl>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function DeliverymanRegistrationSection({
+  form,
+  feedback,
+  pending,
+  vehicles,
+  onChange,
+  onSubmit,
+}: {
+  form: DeliverymanForm;
+  feedback?: Feedback;
+  pending: boolean;
+  vehicles: VehicleOption[];
+  onChange: (field: keyof DeliverymanForm, value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="rounded-xl bg-cyco-light p-2 text-cyco-green">
+          <UserPlus className="h-5 w-5" />
+        </span>
+        <h2 className="text-base font-semibold text-gray-900">Cadastrar entregador</h2>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Nome completo" />
+        <Input value={form.email} onChange={(event) => onChange("email", event.target.value)} placeholder="Email" />
+        <Input
+          type="password"
+          value={form.password}
+          onChange={(event) => onChange("password", event.target.value)}
+          placeholder="Senha inicial"
+        />
+        <Input type="date" value={form.birthDate} onChange={(event) => onChange("birthDate", event.target.value)} />
+        <div className="grid grid-cols-3 gap-2">
+          <Input value={form.ddi} onChange={(event) => onChange("ddi", event.target.value)} placeholder="DDI" />
+          <Input value={form.ddd} onChange={(event) => onChange("ddd", event.target.value)} placeholder="DDD" />
+          <Input value={form.phone} onChange={(event) => onChange("phone", event.target.value)} placeholder="Telefone" />
+        </div>
+        <Input
+          value={form.licenseNumber}
+          onChange={(event) => onChange("licenseNumber", event.target.value)}
+          placeholder="CNH"
+        />
+        <select
+          value={form.vehicleOption}
+          onChange={(event) => onChange("vehicleOption", event.target.value)}
+          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-cyco-green/40"
+        >
+          <option value="">Selecione o veículo</option>
+          {vehicles
+            .filter((vehicle) => vehicle.modelId && vehicle.colorId)
+            .map((vehicle) => (
+              <option
+                key={`${vehicle.id}-${vehicle.modelId}-${vehicle.colorId}`}
+                value={`${vehicle.id}|${vehicle.modelId}|${vehicle.colorId}`}
+              >
+                {getVehicleOptionLabel(vehicle)}
+              </option>
+            ))}
+        </select>
+        <Input value={form.vehiclePlate} onChange={(event) => onChange("vehiclePlate", event.target.value)} placeholder="Placa" />
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        {feedback ? (
+          <div className={`flex items-start gap-2 text-sm ${feedback.type === "success" ? "text-green-700" : "text-red-700"}`}>
+            {feedback.type === "success" ? (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            {feedback.message}
+          </div>
+        ) : (
+          <span className="text-sm text-gray-500">O entregador ficará vinculado a este coletor.</span>
+        )}
+        <button type="button" onClick={onSubmit} disabled={pending} className={`${button()} gap-2`}>
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+          Cadastrar entregador
+        </button>
       </div>
     </section>
   );
@@ -176,6 +312,10 @@ export default function ProfilePage() {
   const sessionMeta = getSessionMeta(session);
   const profileRole = useMemo(() => resolveProfileRole(sessionMeta.role), [sessionMeta.role]);
   const [state, setState] = useState<ProfileState>({ status: "idle" });
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [deliverymanForm, setDeliverymanForm] = useState<DeliverymanForm>(initialDeliverymanForm);
+  const [deliverymanFeedback, setDeliverymanFeedback] = useState<Feedback>();
+  const [deliverymanPending, setDeliverymanPending] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!sessionMeta.generatorId) {
@@ -217,6 +357,103 @@ export default function ProfilePage() {
     }
   }, [profileRole, sessionMeta.generatorId, sessionMeta.token]);
 
+  const loadVehicles = useCallback(async () => {
+    if (profileRole !== "WASTE_COLLECTOR") {
+      setVehicles([]);
+      return;
+    }
+
+    try {
+      const headers: HeadersInit = sessionMeta.token
+        ? { authorization: `Bearer ${sessionMeta.token}` }
+        : {};
+      const response = await fetch("/api/vehicles", { headers });
+      const data = await response.json().catch(() => null);
+      setVehicles(response.ok && Array.isArray(data) ? data : []);
+    } catch {
+      setVehicles([]);
+    }
+  }, [profileRole, sessionMeta.token]);
+
+  function updateDeliverymanForm(field: keyof DeliverymanForm, value: string) {
+    setDeliverymanForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function createDeliveryman() {
+    if (!sessionMeta.generatorId) {
+      setDeliverymanFeedback({ type: "error", message: "Não foi possível identificar o coletor autenticado." });
+      return;
+    }
+
+    const [vehicleId, modelId, colorId] = deliverymanForm.vehicleOption.split("|");
+    const requiredValues = [
+      deliverymanForm.name,
+      deliverymanForm.email,
+      deliverymanForm.password,
+      deliverymanForm.birthDate,
+      deliverymanForm.ddi,
+      deliverymanForm.ddd,
+      deliverymanForm.phone,
+      deliverymanForm.licenseNumber,
+      vehicleId,
+      modelId,
+      colorId,
+      deliverymanForm.vehiclePlate,
+    ];
+
+    if (requiredValues.some((value) => !value.trim())) {
+      setDeliverymanFeedback({ type: "error", message: "Preencha todos os dados do entregador." });
+      return;
+    }
+
+    setDeliverymanPending(true);
+    setDeliverymanFeedback(undefined);
+
+    try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}),
+      };
+      const response = await fetch(`/api/collectors/${sessionMeta.generatorId}/deliverymen`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          email: deliverymanForm.email,
+          password: deliverymanForm.password,
+          name: deliverymanForm.name,
+          birthDate: deliverymanForm.birthDate,
+          licenseNumber: deliverymanForm.licenseNumber,
+          phone: {
+            ddi: Number(deliverymanForm.ddi),
+            ddd: Number(deliverymanForm.ddd),
+            number: deliverymanForm.phone,
+          },
+          vehicle: {
+            id: vehicleId,
+            modelId,
+            colorId,
+            plate: deliverymanForm.vehiclePlate,
+          },
+        }),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(getApiError(data, "Erro ao cadastrar entregador."));
+      }
+
+      setDeliverymanForm(initialDeliverymanForm);
+      setDeliverymanFeedback({ type: "success", message: "Entregador cadastrado." });
+    } catch (error) {
+      setDeliverymanFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Erro ao cadastrar entregador.",
+      });
+    } finally {
+      setDeliverymanPending(false);
+    }
+  }
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/login");
@@ -226,7 +463,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (status !== "authenticated") return;
     loadProfile();
-  }, [loadProfile, status]);
+    loadVehicles();
+  }, [loadProfile, loadVehicles, status]);
 
   if (status === "loading") {
     return (
@@ -269,7 +507,19 @@ export default function ProfilePage() {
                 </div>
               </section>
             ) : state.status === "ready" ? (
-              <ProfileContent profile={state.profile} />
+              <>
+                <ProfileContent profile={state.profile} />
+                {profileRole === "WASTE_COLLECTOR" && (
+                  <DeliverymanRegistrationSection
+                    form={deliverymanForm}
+                    feedback={deliverymanFeedback}
+                    pending={deliverymanPending}
+                    vehicles={vehicles}
+                    onChange={updateDeliverymanForm}
+                    onSubmit={createDeliveryman}
+                  />
+                )}
+              </>
             ) : (
               <section className="rounded-2xl bg-white p-6 text-sm text-gray-600 shadow-sm">
                 Preparando perfil...
