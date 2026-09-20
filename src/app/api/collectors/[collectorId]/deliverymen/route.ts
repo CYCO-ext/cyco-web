@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const COLLECTIONS_API_URL = process.env.COLLECTIONS_API_URL;
 const BASE_API_URL = process.env.BASE_API_URL;
 
 interface RouteContext {
@@ -8,8 +7,8 @@ interface RouteContext {
 }
 
 export async function GET(req: NextRequest, context: RouteContext) {
-  if (!COLLECTIONS_API_URL) {
-    return NextResponse.json({ error: "COLLECTIONS_API_URL não configurada" }, { status: 500 });
+  if (!BASE_API_URL) {
+    return NextResponse.json({ error: "BASE_API_URL não configurada" }, { status: 500 });
   }
 
   const { collectorId } = await context.params;
@@ -18,7 +17,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   const authorization = req.headers.get("authorization");
-  const res = await fetch(`${COLLECTIONS_API_URL}/collectors/${collectorId}/deliverymen`, {
+  const res = await fetch(`${BASE_API_URL}/deliveryman/collector/${collectorId}`, {
     headers: authorization ? { authorization } : undefined,
   });
   const data = await res.json().catch(() => null);

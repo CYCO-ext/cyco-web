@@ -243,6 +243,21 @@ function stringFrom(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function phoneStringFrom(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value;
+  if (!isRecord(value)) return undefined;
+
+  const ddi = stringFrom(value.ddi) ?? (typeof value.ddi === "number" ? String(value.ddi) : undefined);
+  const ddd = stringFrom(value.ddd) ?? (typeof value.ddd === "number" ? String(value.ddd) : undefined);
+  const number = stringFrom(value.number);
+
+  if (!number) return undefined;
+
+  if (ddi && ddd) return `+${ddi} (${ddd}) ${number}`;
+  if (ddd) return `(${ddd}) ${number}`;
+  return number;
+}
+
 function numberFrom(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -534,15 +549,17 @@ export function normalizeDeliverymen(response: unknown): DeliverymanProfile[] {
     const id = stringFrom(item.id) ?? stringFrom(item.deliverymanId);
     if (!id) return [];
 
+    const vehicle = isRecord(item.vehicle) ? item.vehicle : {};
+
     return [{
       id,
       collectorId: stringFrom(item.collectorId) ?? stringFrom(item.wasteCollectorId),
       name: stringFrom(item.name),
       email: stringFrom(item.email),
-      phone: stringFrom(item.phone),
+      phone: phoneStringFrom(item.phone),
       licenseNumber: stringFrom(item.licenseNumber),
-      vehicleId: stringFrom(item.vehicleId),
-      vehiclePlate: stringFrom(item.vehiclePlate),
+      vehicleId: stringFrom(item.vehicleId) ?? stringFrom(vehicle.id),
+      vehiclePlate: stringFrom(item.vehiclePlate) ?? stringFrom(vehicle.plate),
       active: typeof item.active === "boolean" ? item.active : undefined,
     }];
   });
