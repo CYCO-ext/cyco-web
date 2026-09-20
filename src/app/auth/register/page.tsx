@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Recycle, Factory, Truck } from "lucide-react";
+import { Mail, Lock, Recycle, Factory } from "lucide-react";
 import { registerSchema, RegisterSchemaType } from "../../lib/schemas";
 import AuthLayout from "../../components/authLayout";
 import { button, Input, MaterialDropdown } from "../../components/ui";
@@ -32,25 +32,6 @@ type RegisterPayload = {
   enterprise?: {
     companyName?: string;
   };
-  wasteCollectorId?: string;
-  licenseNumber?: string;
-  vehicle?: {
-    id: string;
-    modelId: string;
-    colorId: string;
-    plate: string;
-  };
-};
-
-type VehicleOption = {
-  id: string;
-  modelId?: string;
-  colorId?: string;
-  brand?: string;
-  model?: string;
-  color?: string;
-  type?: string;
-  year?: number;
 };
 
 export default function RegisterStep1() {
@@ -59,7 +40,6 @@ export default function RegisterStep1() {
   const [step, setStep] = useState(1);
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [materials, setMaterials] = useState<{ name: string }[]>([]);
-  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [isEnterprise, setIsEnterprise] = useState(false);
 
   const {
@@ -85,15 +65,6 @@ export default function RegisterStep1() {
         .then((res) => res.json())
         .then((data) => setMaterials(data));
     }
-  }, [step, role]);
-
-  useEffect(() => {
-    if (step !== 2 || role !== "ENTREGADOR") return;
-
-    fetch("/api/vehicles")
-      .then((res) => res.json())
-      .then((data) => setVehicles(Array.isArray(data) ? data : []))
-      .catch(() => setVehicles([]));
   }, [step, role]);
 
   const handleNextStep = async () => {
@@ -166,35 +137,6 @@ export default function RegisterStep1() {
         }
       }
 
-      if (data.role === "ENTREGADOR") {
-        const [vehicleId, modelId, colorId] = (data.vehicleOption ?? "").split("|");
-        payload = {
-          email: data.email,
-          password: data.password,
-          name: `${data.firstName} ${data.lastName}`,
-          birthDate: data.birthDate,
-          phone: {
-            ddd: Number(data.ddd),
-            ddi: Number(data.ddi),
-            number: data.phone,
-          },
-          address: {
-            zipCode: data.cep,
-            number: data.number,
-            complement: data.complement,
-          },
-          document: data.document,
-          wasteCollectorId: data.wasteCollectorId,
-          licenseNumber: data.licenseNumber,
-          vehicle: {
-            id: vehicleId,
-            modelId,
-            colorId,
-            plate: data.vehiclePlate ?? "",
-          },
-        };
-      }
-
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -254,7 +196,7 @@ export default function RegisterStep1() {
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <RoleCard
                 selected={role === "CATADOR"}
                 onClick={() =>
@@ -270,14 +212,6 @@ export default function RegisterStep1() {
                 }
                 label="Gerador"
                 icon={<Factory />}
-              />
-              <RoleCard
-                selected={role === "ENTREGADOR"}
-                onClick={() =>
-                  setValue("role", "ENTREGADOR", { shouldValidate: true })
-                }
-                label="Entregador"
-                icon={<Truck />}
               />
             </div>
 
@@ -356,7 +290,7 @@ export default function RegisterStep1() {
               </div>
             </div>
 
-            {(role === "GERADOR" || role === "ENTREGADOR") && (
+            {role === "GERADOR" && (
               <div>
                 <Input type="date" {...register("birthDate")} />
                 {errors.birthDate && (
@@ -434,56 +368,6 @@ export default function RegisterStep1() {
                   placeholder="Materiais"
                 />
               </>
-            )}
-
-            {role === "ENTREGADOR" && (
-              <div className="grid gap-3 rounded-xl border border-gray-200 p-3">
-                <Input
-                  {...register("wasteCollectorId")}
-                  placeholder="ID do coletor responsável"
-                />
-                {errors.wasteCollectorId && (
-                  <p className="text-red-600 text-sm">
-                    {errors.wasteCollectorId.message}
-                  </p>
-                )}
-
-                <Input {...register("licenseNumber")} placeholder="CNH" />
-                {errors.licenseNumber && (
-                  <p className="text-red-600 text-sm">
-                    {errors.licenseNumber.message}
-                  </p>
-                )}
-
-                <select
-                  {...register("vehicleOption")}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-cyco-green/40"
-                >
-                  <option value="">Selecione o veículo</option>
-                  {vehicles
-                    .filter((vehicle) => vehicle.modelId && vehicle.colorId)
-                    .map((vehicle) => (
-                      <option
-                        key={`${vehicle.id}-${vehicle.modelId}-${vehicle.colorId}`}
-                        value={`${vehicle.id}|${vehicle.modelId}|${vehicle.colorId}`}
-                      >
-                        {[vehicle.brand, vehicle.model, vehicle.color, vehicle.year].filter(Boolean).join(" - ")}
-                      </option>
-                    ))}
-                </select>
-                {errors.vehicleOption && (
-                  <p className="text-red-600 text-sm">
-                    {errors.vehicleOption.message}
-                  </p>
-                )}
-
-                <Input {...register("vehiclePlate")} placeholder="Placa do veículo" />
-                {errors.vehiclePlate && (
-                  <p className="text-red-600 text-sm">
-                    {errors.vehiclePlate.message}
-                  </p>
-                )}
-              </div>
             )}
 
             <button

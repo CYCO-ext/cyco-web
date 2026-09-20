@@ -9,7 +9,7 @@ export const loginSchema = z.object({
 export const registerStep1Schema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(8, { message: "A senha deve ter no mínimo 8 caracteres" }),
-  role: z.enum(["CATADOR", "GERADOR", "ENTREGADOR"]),
+  role: z.enum(["CATADOR", "GERADOR"]),
 });
 
 export const extraFieldsSchema = z.object({
@@ -31,10 +31,6 @@ export const extraFieldsSchema = z.object({
   complement: z.string().optional(),
 
   companyName: z.string().optional(),
-  wasteCollectorId: z.string().optional(),
-  licenseNumber: z.string().optional(),
-  vehicleOption: z.string().optional(),
-  vehiclePlate: z.string().optional(),
 });
 
 export const registerSchema = registerStep1Schema
@@ -46,48 +42,6 @@ export const registerSchema = registerStep1Schema
           code: z.ZodIssueCode.custom,
           message: "Data de nascimento obrigatória",
           path: ["birthDate"],
-        });
-      }
-    }
-
-    if (data.role === "ENTREGADOR") {
-      if (!data.birthDate) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Data de nascimento obrigatória",
-          path: ["birthDate"],
-        });
-      }
-
-      if (!data.wasteCollectorId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Coletor responsável obrigatório",
-          path: ["wasteCollectorId"],
-        });
-      }
-
-      if (!data.licenseNumber) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "CNH obrigatória",
-          path: ["licenseNumber"],
-        });
-      }
-
-      if (!data.vehicleOption) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Veículo obrigatório",
-          path: ["vehicleOption"],
-        });
-      }
-
-      if (!data.vehiclePlate) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Placa obrigatória",
-          path: ["vehiclePlate"],
         });
       }
     }

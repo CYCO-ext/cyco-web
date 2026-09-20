@@ -27,7 +27,7 @@ import {
 
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
-import { button } from "@/app/components/ui";
+import { button, Input } from "@/app/components/ui";
 import {
   CollectionSummary,
   formatCollectionAddress,
@@ -95,6 +95,43 @@ type DeliveryPendingAction = {
   action: "start" | "complete" | "fail" | "finish";
 };
 
+type VehicleOption = {
+  id: string;
+  modelId?: string;
+  colorId?: string;
+  brand?: string;
+  model?: string;
+  color?: string;
+  type?: string;
+  year?: number;
+};
+
+type CreateDeliverymanForm = {
+  name: string;
+  email: string;
+  password: string;
+  birthDate: string;
+  ddi: string;
+  ddd: string;
+  phone: string;
+  licenseNumber: string;
+  vehicleOption: string;
+  vehiclePlate: string;
+};
+
+const initialDeliverymanForm: CreateDeliverymanForm = {
+  name: "",
+  email: "",
+  password: "",
+  birthDate: "",
+  ddi: "55",
+  ddd: "",
+  phone: "",
+  licenseNumber: "",
+  vehicleOption: "",
+  vehiclePlate: "",
+};
+
 type CollectionModalState =
   | { status: "idle" }
   | { status: "loading"; collectionId: string }
@@ -159,6 +196,10 @@ function routeAssignmentLabel(status?: string): string {
 
 function getDeliverymanDisplayName(deliveryman: DeliverymanProfile | undefined, fallbackId?: string): string {
   return deliveryman?.name ?? deliveryman?.email ?? fallbackId ?? "Entregador";
+}
+
+function getVehicleOptionLabel(vehicle: VehicleOption): string {
+  return [vehicle.brand, vehicle.model, vehicle.color, vehicle.year].filter(Boolean).join(" - ") || vehicle.id;
 }
 
 function CollectionDetailsModal({
@@ -777,8 +818,11 @@ export default function SavedRoutesPage() {
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [deliverymen, setDeliverymen] = useState<DeliverymanProfile[]>([]);
   const [deliveryAssignments, setDeliveryAssignments] = useState<RouteAssignment[]>([]);
+  const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
+  const [deliverymanForm, setDeliverymanForm] = useState<CreateDeliverymanForm>(initialDeliverymanForm);
   const [loading, setLoading] = useState(false);
   const [deliverymenLoading, setDeliverymenLoading] = useState(false);
+  const [createDeliverymanPending, setCreateDeliverymanPending] = useState(false);
   const [error, setError] = useState<PageError>();
   const [deletePendingId, setDeletePendingId] = useState<string>();
   const [deleteFeedback, setDeleteFeedback] = useState<DeleteRouteFeedback>();
@@ -787,6 +831,7 @@ export default function SavedRoutesPage() {
   const [assignmentPending, setAssignmentPending] = useState<AssignmentPending>();
   const [deliveryPendingAction, setDeliveryPendingAction] = useState<DeliveryPendingAction>();
   const [deliveryFeedback, setDeliveryFeedback] = useState<DeliveryFeedback>();
+  const [createDeliverymanFeedback, setCreateDeliverymanFeedback] = useState<DeliveryFeedback>();
   const [failReasons, setFailReasons] = useState<Record<string, string>>({});
   const [draggedStop, setDraggedStop] = useState<DraggedStop>();
   const [dropTarget, setDropTarget] = useState<DropTarget>();
@@ -854,6 +899,27 @@ export default function SavedRoutesPage() {
     }
   }, [headers, isCollector, sessionMeta.generatorId]);
 
+  const loadVehicleOptions = useCallback(async () => {
+    if (!isCollector) {
+      setVehicleOptions([]);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/vehicles", { headers });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !Array.isArray(data)) {
+        setVehicleOptions([]);
+        return;
+      }
+
+      setVehicleOptions(data);
+    } catch {
+      setVehicleOptions([]);
+    }
+  }, [headers, isCollector]);
+
   const loadDeliveryAssignments = useCallback(async () => {
     if (!isDeliveryman || !sessionMeta.generatorId) {
       setDeliveryAssignments([]);
@@ -886,7 +952,8 @@ export default function SavedRoutesPage() {
     if (status !== "authenticated" || !isCollector) return;
     loadSavedRoutes();
     loadDeliverymen();
-  }, [isCollector, loadDeliverymen, loadSavedRoutes, status]);
+    loadVehicleOptions();
+  }, [isCollector, loadDeliverymen, loadSavedRoutes, loadVehicleOptions, status]);
 
   useEffect(() => {
     if (status !== "authenticated" || !isDeliveryman) return;
@@ -1057,6 +1124,85 @@ export default function SavedRoutesPage() {
       });
     } finally {
       setAssignmentPending(undefined);
+    }
+  }
+
+  function updateDeliverymanForm(field: keyof CreateDeliverymanForm, value: string) {
+    setDeliverymanForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function createDeliveryman() {
+    if (!sessionMeta.generatorId) {
+      setCreateDeliverymanFeedback({ type: "error", message: "Não foi possível identificar o coletor autenticado." });
+      return;
+    }
+
+    const [vehicleId, modelId, colorId] = deliverymanForm.vehicleOption.split("|");
+    const requiredValues = [
+      deliverymanForm.name,
+      deliverymanForm.email,
+      deliverymanForm.password,
+      deliverymanForm.birthDate,
+      deliverymanForm.ddi,
+      deliverymanForm.ddd,
+      deliverymanForm.phone,
+      deliverymanForm.licenseNumber,
+      vehicleId,
+      modelId,
+      colorId,
+      deliverymanForm.vehiclePlate,
+    ];
+
+    if (requiredValues.some((value) => !value.trim())) {
+      setCreateDeliverymanFeedback({ type: "error", message: "Preencha todos os dados do entregador." });
+      return;
+    }
+
+    setCreateDeliverymanPending(true);
+    setCreateDeliverymanFeedback(undefined);
+
+    try {
+      const res = await fetch(`/api/collectors/${sessionMeta.generatorId}/deliverymen`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: deliverymanForm.email,
+          password: deliverymanForm.password,
+          name: deliverymanForm.name,
+          birthDate: deliverymanForm.birthDate,
+          licenseNumber: deliverymanForm.licenseNumber,
+          phone: {
+            ddi: Number(deliverymanForm.ddi),
+            ddd: Number(deliverymanForm.ddd),
+            number: deliverymanForm.phone,
+          },
+          vehicle: {
+            id: vehicleId,
+            modelId,
+            colorId,
+            plate: deliverymanForm.vehiclePlate,
+          },
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(getApiError(data, "Erro ao cadastrar entregador."));
+      }
+
+      setDeliverymanForm(initialDeliverymanForm);
+      setCreateDeliverymanFeedback({ type: "success", message: "Entregador cadastrado." });
+      await loadDeliverymen();
+    } catch (err) {
+      setCreateDeliverymanFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Erro ao cadastrar entregador.",
+      });
+    } finally {
+      setCreateDeliverymanPending(false);
     }
   }
 
@@ -1274,6 +1420,117 @@ export default function SavedRoutesPage() {
                       <RotateCcw className="h-4 w-4" />
                       Atualizar
                     </button>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <UserPlus className="h-5 w-5 text-cyco-green" />
+                      <h2 className="text-base font-semibold text-gray-900">Cadastrar entregador</h2>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Input
+                        value={deliverymanForm.name}
+                        onChange={(event) => updateDeliverymanForm("name", event.target.value)}
+                        placeholder="Nome completo"
+                      />
+                      <Input
+                        value={deliverymanForm.email}
+                        onChange={(event) => updateDeliverymanForm("email", event.target.value)}
+                        placeholder="Email"
+                      />
+                      <Input
+                        type="password"
+                        value={deliverymanForm.password}
+                        onChange={(event) => updateDeliverymanForm("password", event.target.value)}
+                        placeholder="Senha inicial"
+                      />
+                      <Input
+                        type="date"
+                        value={deliverymanForm.birthDate}
+                        onChange={(event) => updateDeliverymanForm("birthDate", event.target.value)}
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          value={deliverymanForm.ddi}
+                          onChange={(event) => updateDeliverymanForm("ddi", event.target.value)}
+                          placeholder="DDI"
+                        />
+                        <Input
+                          value={deliverymanForm.ddd}
+                          onChange={(event) => updateDeliverymanForm("ddd", event.target.value)}
+                          placeholder="DDD"
+                        />
+                        <Input
+                          value={deliverymanForm.phone}
+                          onChange={(event) => updateDeliverymanForm("phone", event.target.value)}
+                          placeholder="Telefone"
+                        />
+                      </div>
+                      <Input
+                        value={deliverymanForm.licenseNumber}
+                        onChange={(event) => updateDeliverymanForm("licenseNumber", event.target.value)}
+                        placeholder="CNH"
+                      />
+                      <select
+                        value={deliverymanForm.vehicleOption}
+                        onChange={(event) => updateDeliverymanForm("vehicleOption", event.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-cyco-green/40"
+                      >
+                        <option value="">Selecione o veículo</option>
+                        {vehicleOptions
+                          .filter((vehicle) => vehicle.modelId && vehicle.colorId)
+                          .map((vehicle) => (
+                            <option
+                              key={`${vehicle.id}-${vehicle.modelId}-${vehicle.colorId}`}
+                              value={`${vehicle.id}|${vehicle.modelId}|${vehicle.colorId}`}
+                            >
+                              {getVehicleOptionLabel(vehicle)}
+                            </option>
+                          ))}
+                      </select>
+                      <Input
+                        value={deliverymanForm.vehiclePlate}
+                        onChange={(event) => updateDeliverymanForm("vehiclePlate", event.target.value)}
+                        placeholder="Placa"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      {createDeliverymanFeedback ? (
+                        <div
+                          className={`flex items-start gap-2 text-sm ${
+                            createDeliverymanFeedback.type === "success" ? "text-green-700" : "text-red-700"
+                          }`}
+                        >
+                          {createDeliverymanFeedback.type === "success" ? (
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                          ) : (
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                          )}
+                          {createDeliverymanFeedback.message}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-500">
+                          {deliverymen.length} entregador(es) cadastrados
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={createDeliveryman}
+                        disabled={createDeliverymanPending}
+                        className={`${button()} gap-2`}
+                      >
+                        {createDeliverymanPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="h-4 w-4" />
+                        )}
+                        Cadastrar entregador
+                      </button>
+                    </div>
                   </div>
                 </section>
 
