@@ -10,6 +10,7 @@ type ErrorPayload = {
 type CollectionCompletionFormProps = {
   onConfirm: (code: string, idempotencyKey: string) => Promise<Response>;
   label?: string;
+  allowPending?: boolean;
 };
 
 function createIdempotencyKey() {
@@ -19,6 +20,7 @@ function createIdempotencyKey() {
 export default function CollectionCompletionForm({
   onConfirm,
   label = "Código de confirmação",
+  allowPending = true,
 }: CollectionCompletionFormProps) {
   const inputId = useId();
   const messageId = `${inputId}-message`;
@@ -46,12 +48,17 @@ export default function CollectionCompletionForm({
       const response = await onConfirm(code, key);
       const payload = await response.json().catch(() => ({})) as ErrorPayload;
 
-      if (response.ok) {
+      if (response.status === 200 || (response.status === 202 && allowPending)) {
         setCode("");
         setIdempotencyKey(null);
         setMessage(response.status === 202
           ? "Confirmação recebida. A atualização da rota está pendente."
           : "Coleta confirmada.");
+        return;
+      }
+
+      if (response.status === 202) {
+        setMessage("A coleta não foi confirmada. Atualize o status e tente novamente.");
         return;
       }
 

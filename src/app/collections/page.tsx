@@ -18,6 +18,7 @@ import {
 
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import CollectionCompletionForm from "@/app/components/CollectionCompletionForm";
 import { button } from "@/app/components/ui";
 import { getSessionMeta, isGeneratorRole } from "@/app/lib/createCollection";
 import {
@@ -360,7 +361,7 @@ function CollectionCard({
   token?: string;
   onAccept: (collectionId: string) => void;
   onReject: (collectionId: string) => void;
-  onFinish: (collectionId: string) => void;
+  onFinish: (collectionId: string, code: string, idempotencyKey: string) => Promise<Response>;
   onCancel: (collectionId: string) => void;
   onMarkOnWay: (collectionId: string) => void;
   deliverymen: DeliverymanProfile[];
@@ -508,19 +509,15 @@ function CollectionCard({
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => onFinish(collection.id)}
-                disabled={actionPending || viewerConfirmed}
-                className={`${button()} min-w-32 disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                {actionPending && actionPendingKind === "finish"
-                  ? "Finalizando..."
-                  : viewerConfirmed
-                    ? "Finalização confirmada"
-                    : "Finalizar coleta"}
-              </button>
             </div>
+          )}
+
+          {showFinish && (
+            <CollectionCompletionForm
+              label="Código para confirmar a coleta"
+              allowPending={false}
+              onConfirm={(code, idempotencyKey) => onFinish(collection.id, code, idempotencyKey)}
+            />
           )}
 
           {showCancel && (
@@ -902,42 +899,38 @@ export default function CollectionsPage() {
     }
   }, [loadCollections, sessionMeta.generatorId, sessionMeta.token]);
 
-  const handleFinish = useCallback(async (collectionId: string) => {
-    if (viewerRole !== "WASTE_COLLECTOR") return;
+  const handleFinish = useCallback(async (collectionId: string, code: string, idempotencyKey: string): Promise<Response> => {
+    if (viewerRole !== "WASTE_COLLECTOR") {
+      return Response.json({ error: "Somente a coletora pode confirmar a coleta." }, { status: 403 });
+    }
 
     setActionPendingId(collectionId);
     setActionPendingKind("finish");
     setActionFeedback(undefined);
 
-    const endpoint = `/api/collections/requests/${collectionId}/confirm-collector`;
-    const fallback = "Erro ao finalizar coleta como coletor.";
-
     try {
-      const headers: HeadersInit = sessionMeta.token
-        ? { authorization: `Bearer ${sessionMeta.token}` }
-        : {};
-      const res = await fetch(endpoint, {
+      const res = await fetch(`/api/collections/requests/${encodeURIComponent(collectionId)}/confirm-collector`, {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+          ...(sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}),
+        },
+        body: JSON.stringify({ code }),
       });
-      const data = await res.json().catch(() => null);
 
-      if (!res.ok) {
-        throw new Error(getApiError(data, fallback));
+      if (res.status === 200) {
+        setActionFeedback({
+          collectionId,
+          type: "success",
+          message: "Finalização confirmada com sucesso.",
+        });
+        await loadCollections();
       }
 
-      setActionFeedback({
-        collectionId,
-        type: "success",
-        message: "Finalização confirmada com sucesso.",
-      });
-      await loadCollections();
-    } catch (finishError) {
-      setActionFeedback({
-        collectionId,
-        type: "error",
-        message: finishError instanceof Error ? finishError.message : fallback,
-      });
+      return res;
+    } catch {
+      return Response.json({ error: "Erro ao finalizar coleta como coletor." }, { status: 500 });
     } finally {
       setActionPendingId(undefined);
       setActionPendingKind(undefined);
