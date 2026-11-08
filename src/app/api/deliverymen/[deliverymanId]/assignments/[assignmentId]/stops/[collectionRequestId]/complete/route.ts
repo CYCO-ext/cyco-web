@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { completionProxyError, completionProxyResponse } from "../../../../../../../../lib/completionProxy";
 
 const COLLECTIONS_API_URL = process.env.COLLECTIONS_API_URL;
 
@@ -8,19 +9,30 @@ interface RouteContext {
 
 export async function POST(req: NextRequest, context: RouteContext) {
   if (!COLLECTIONS_API_URL) {
-    return NextResponse.json({ error: "COLLECTIONS_API_URL não configurada" }, { status: 500 });
+    return completionProxyError("COLLECTIONS_API_URL não configurada", 500);
   }
 
   const { deliverymanId, assignmentId, collectionRequestId } = await context.params;
   if (!deliverymanId || !assignmentId || !collectionRequestId) {
-    return NextResponse.json({ error: "Entregador, rota ou coleta não informado" }, { status: 400 });
+    return completionProxyError("Entregador, rota ou coleta não informado", 400);
   }
 
-  const authorization = req.headers.get("authorization");
-  const res = await fetch(`${COLLECTIONS_API_URL}/deliverymen/${deliverymanId}/assignments/${assignmentId}/stops/${collectionRequestId}/complete`, {
-    method: "POST",
-    headers: authorization ? { authorization } : undefined,
-  });
-  const data = await res.json().catch(() => null);
-  return NextResponse.json(data, { status: res.status });
+  try {
+    const authorization = req.headers.get("authorization");
+    const idempotencyKey = req.headers.get("idempotency-key");
+    const body = await req.text();
+    const res = await fetch(`${COLLECTIONS_API_URL}/deliverymen/${deliverymanId}/assignments/${assignmentId}/stops/${collectionRequestId}/complete`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        ...(authorization ? { authorization } : {}),
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+        ...(body ? { "content-type": req.headers.get("content-type") ?? "application/json" } : {}),
+      },
+      ...(body ? { body } : {}),
+    });
+    return await completionProxyResponse(res);
+  } catch {
+    return completionProxyError("Erro ao finalizar parada como entregador", 500);
+  }
 }

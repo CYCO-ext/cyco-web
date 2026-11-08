@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { completionProxyError, completionProxyResponse } from "../../../../../lib/completionProxy";
 
 const COLLECTIONS_API_URL = process.env.COLLECTIONS_API_URL;
 
@@ -10,32 +11,31 @@ interface RouteContext {
 
 export async function POST(req: NextRequest, context: RouteContext) {
   if (!COLLECTIONS_API_URL) {
-    return NextResponse.json({ error: "COLLECTIONS_API_URL não configurada" }, { status: 500 });
+    return completionProxyError("COLLECTIONS_API_URL não configurada", 500);
   }
 
   const { id } = await context.params;
 
   if (!id) {
-    return NextResponse.json({ error: "ID da solicitação não informado" }, { status: 400 });
+    return completionProxyError("ID da solicitação não informado", 400);
   }
 
   try {
     const authorization = req.headers.get("authorization");
+    const idempotencyKey = req.headers.get("idempotency-key");
+    const body = await req.text();
     const res = await fetch(`${COLLECTIONS_API_URL}/requests/${id}/confirm-collector`, {
       method: "POST",
-      headers: authorization ? { authorization } : undefined,
+      cache: "no-store",
+      headers: {
+        ...(authorization ? { authorization } : {}),
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+        ...(body ? { "content-type": req.headers.get("content-type") ?? "application/json" } : {}),
+      },
+      ...(body ? { body } : {}),
     });
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      return NextResponse.json(
-        data ?? { error: "Erro ao finalizar coleta como coletor" },
-        { status: res.status },
-      );
-    }
-
-    return NextResponse.json(data ?? { ok: true });
+    return await completionProxyResponse(res);
   } catch {
-    return NextResponse.json({ error: "Erro ao finalizar coleta como coletor" }, { status: 500 });
+    return completionProxyError("Erro ao finalizar coleta como coletor", 500);
   }
 }
