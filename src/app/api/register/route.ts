@@ -11,6 +11,8 @@ export async function POST(req: NextRequest) {
       endpoint = `${BASE_API_URL}/generator`;
     } else if (role === "CATADOR") {
       endpoint = `${BASE_API_URL}/waste-collectors`;
+    } else if (role === "ENTREGADOR" || role === "DELIVERYMAN") {
+      endpoint = `${BASE_API_URL}/deliveryman`;
     } else {
       return NextResponse.json({ error: "Tipo de usuário inválido" }, { status: 400 });
     }
@@ -20,12 +22,10 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      return NextResponse.json(data, { status: res.status });
-    }
-    return NextResponse.json(data);
-  } catch {
-    return NextResponse.json({ error: "Erro ao registrar usuário" }, { status: 500 });
+    const data = await res.json().catch(() => null);
+    return NextResponse.json(data, { status: res.status });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

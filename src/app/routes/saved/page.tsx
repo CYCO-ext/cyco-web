@@ -131,12 +131,15 @@ function formatDateTime(value: string | null): string {
 }
 
 function formatStopAddress(stop: SuggestedRouteStop): string {
-  if (stop.street?.trim()) {
-    const number = stop.number?.trim() ? `, ${stop.number}` : "";
-    return `${stop.street}${number}`;
-  }
+  const streetLine = stop.street?.trim()
+    ? `${stop.street.trim()}${stop.number?.trim() ? `, ${stop.number.trim()}` : ""}`
+    : "";
+  const locality = [stop.city?.trim(), stop.state?.trim(), stop.zipCode?.trim()]
+    .filter(Boolean)
+    .join(" - ");
+  const address = [streetLine, locality].filter(Boolean).join(" • ");
 
-  return "Endereço não informado";
+  return address || `Endereço ${stop.addressId.slice(0, 8)}`;
 }
 
 function routeAssignmentLabel(status?: string): string {

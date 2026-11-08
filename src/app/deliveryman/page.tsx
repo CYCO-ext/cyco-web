@@ -53,7 +53,7 @@ function getApiError(data: unknown, fallback: string): string {
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     ASSIGNED: "Atribuída",
-    IN_PROGRESS: "Em rota",
+    IN_PROGRESS: "A caminho",
     COMPLETED: "Concluída",
     PARTIALLY_COMPLETED: "Parcial",
     FAILED: "Falhou",
@@ -469,7 +469,7 @@ export default function DeliverymanPage() {
                   <div className="rounded-2xl bg-white p-4 shadow-sm">
                     <ClipboardList className="h-5 w-5 text-[#2d5b36]" />
                     <p className="mt-3 text-2xl font-semibold text-[#263827]">{assignments.length}</p>
-                    <p className="text-sm text-[#77846f]">rotas ativas</p>
+                    <p className="text-sm text-[#77846f]">rotas atribuídas</p>
                   </div>
                   <div className="rounded-2xl bg-white p-4 shadow-sm">
                     <MapPin className="h-5 w-5 text-[#2d5b36]" />

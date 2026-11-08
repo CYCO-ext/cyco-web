@@ -348,6 +348,7 @@ function CollectionCard({
   deliverymen,
   deliverymenLoading,
   assignmentPending,
+  isAssignedToRoute,
   onAssignDeliveryman,
 }: {
   collection: CollectionSummary;
@@ -367,6 +368,7 @@ function CollectionCard({
   deliverymen: DeliverymanProfile[];
   deliverymenLoading: boolean;
   assignmentPending: boolean;
+  isAssignedToRoute: boolean;
   onAssignDeliveryman: (collection: CollectionSummary, deliverymanId: string) => void;
 }) {
   const showAccept = viewerRole === "WASTE_COLLECTOR" && isAcceptEligible(collection);
@@ -374,7 +376,8 @@ function CollectionCard({
   const showFinish = viewerRole === "WASTE_COLLECTOR" && isFinishEligible(collection);
   const showCancel = !!viewerRole && isCancelEligible(collection);
   const showOnWay = viewerRole === "WASTE_COLLECTOR" && isOnWayEligible(collection);
-  const showAssignDeliveryman = viewerRole === "WASTE_COLLECTOR" && ["IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
+  const showAssignDeliveryman = viewerRole === "WASTE_COLLECTOR" && !isAssignedToRoute
+    && ["IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
   const viewerConfirmed = hasViewerConfirmed(collection, viewerRole);
   const actionCopy = showFinish
     ? viewerConfirmed
@@ -573,6 +576,13 @@ function CollectionCard({
           </div>
         </div>
       )}
+
+      {viewerRole === "WASTE_COLLECTOR" && isAssignedToRoute && (
+        <div className="mt-4 rounded-xl border border-cyco-light bg-cyco-light/40 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-cyco-green">Entregador responsável</div>
+          <p className="mt-1 text-sm text-gray-600">Esta coleta já está atribuída a um entregador pela rota.</p>
+        </div>
+      )}
     </article>
   );
 }
@@ -585,6 +595,7 @@ export default function CollectionsPage() {
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [counterpartProfiles, setCounterpartProfiles] = useState<CounterpartProfiles>({});
   const [deliverymen, setDeliverymen] = useState<DeliverymanProfile[]>([]);
+  const [routeAssignedCollectionIds, setRouteAssignedCollectionIds] = useState<Set<string>>(new Set());
   const [deliverymenLoading, setDeliverymenLoading] = useState(false);
   const [profilesLoading, setProfilesLoading] = useState(false);
   const [actionPendingId, setActionPendingId] = useState<string>();
@@ -620,6 +631,32 @@ export default function CollectionsPage() {
       setDeliverymen([]);
     } finally {
       setDeliverymenLoading(false);
+    }
+  }, [sessionMeta.generatorId, sessionMeta.token, viewerRole]);
+
+  const loadRouteAssignments = useCallback(async () => {
+    if (viewerRole !== "WASTE_COLLECTOR" || !sessionMeta.generatorId) {
+      setRouteAssignedCollectionIds(new Set());
+      return;
+    }
+
+    try {
+      const headers: HeadersInit = sessionMeta.token
+        ? { authorization: `Bearer ${sessionMeta.token}` }
+        : {};
+      const response = await fetch("/api/collectors/routes/saved", { headers });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setRouteAssignedCollectionIds(new Set());
+        return;
+      }
+
+      const assignedIds = normalizeSavedRoutes(data).flatMap((route) =>
+        route.assignments.flatMap((assignment) => assignment.assignedCollectionRequestIds),
+      );
+      setRouteAssignedCollectionIds(new Set(assignedIds));
+    } catch {
+      setRouteAssignedCollectionIds(new Set());
     }
   }, [sessionMeta.generatorId, sessionMeta.token, viewerRole]);
 
@@ -701,7 +738,7 @@ export default function CollectionsPage() {
 
       const loadedCollections = Array.isArray(data) ? data : [];
       setCollections(loadedCollections);
-      await fetchCounterpartProfiles(loadedCollections);
+      await Promise.all([fetchCounterpartProfiles(loadedCollections), loadRouteAssignments()]);
     } catch (loadError) {
       setCollections([]);
       setCounterpartProfiles({});
@@ -711,7 +748,7 @@ export default function CollectionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchCounterpartProfiles, roleQuery, sessionMeta.token, statusFilter]);
+  }, [fetchCounterpartProfiles, loadRouteAssignments, roleQuery, sessionMeta.token, statusFilter]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -945,6 +982,12 @@ export default function CollectionsPage() {
     const savedRoutesRes = await fetch("/api/collectors/routes/saved", { headers });
     const savedRoutesData = await savedRoutesRes.json().catch(() => null);
     const savedRoutes = savedRoutesRes.ok ? normalizeSavedRoutes(savedRoutesData) : [];
+    const isAssignedInRoute = savedRoutes.some((route) => route.assignments.some((assignment) =>
+      assignment.assignedCollectionRequestIds.includes(collection.id),
+    ));
+    if (isAssignedInRoute) {
+      throw new Error("Esta coleta já está atribuída a um entregador por uma rota.");
+    }
     const existingRoute = findSingleCollectionRoute(savedRoutes, collection.id);
     if (existingRoute) return existingRoute;
 
@@ -1025,6 +1068,7 @@ export default function CollectionsPage() {
         type: "success",
         message: "Coleta atribuída ao entregador.",
       });
+      setRouteAssignedCollectionIds((current) => new Set(current).add(collection.id));
     } catch (assignError) {
       setActionFeedback({
         collectionId: collection.id,
@@ -1147,6 +1191,7 @@ export default function CollectionsPage() {
                       deliverymen={deliverymen}
                       deliverymenLoading={deliverymenLoading}
                       assignmentPending={actionPendingId === collection.id && actionPendingKind === "assign"}
+                      isAssignedToRoute={routeAssignedCollectionIds.has(collection.id)}
                       onAccept={handleAccept}
                       onReject={handleReject}
                       onFinish={handleFinish}

@@ -1,5 +1,7 @@
 import { DefaultSession } from "next-auth";
 
+type CycoRole = "WASTE_COLLECTOR" | "GENERATOR" | "DELIVERYMAN";
+
 declare module "next-auth" {
   interface Session {
     user: {
@@ -7,14 +9,14 @@ declare module "next-auth" {
       name: string;
       email: string;
     } & DefaultSession["user"];
-    role?: "WASTE_COLLECTOR" | "GENERATOR";
+    role?: CycoRole;
     token?: string;
     accessToken?: string;
   }
 
   interface User {
     id: string;
-    role?: "WASTE_COLLECTOR" | "GENERATOR";
+    role?: CycoRole;
     token?: string;
   }
 }
@@ -22,7 +24,7 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
-    role?: "WASTE_COLLECTOR" | "GENERATOR";
+    role?: CycoRole;
     token?: string;
   }
 }
