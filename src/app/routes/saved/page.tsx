@@ -27,6 +27,7 @@ import {
 
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import CollectionCompletionForm from "@/app/components/CollectionCompletionForm";
 import { button } from "@/app/components/ui";
 import {
   CollectionSummary,
@@ -641,7 +642,7 @@ function DeliveryAssignmentsPanel({
   failReasons: Record<string, string>;
   onFailReasonChange: (key: string, value: string) => void;
   onStart: (assignment: RouteAssignment) => void;
-  onCompleteStop: (assignment: RouteAssignment, collectionRequestId: string) => void;
+  onCompleteStop: (assignment: RouteAssignment, collectionRequestId: string, code: string, idempotencyKey: string) => Promise<Response>;
   onFailStop: (assignment: RouteAssignment, collectionRequestId: string) => void;
   onFinish: (assignment: RouteAssignment) => void;
 }) {
@@ -705,7 +706,6 @@ function DeliveryAssignmentsPanel({
                 const reasonKey = `${assignment.id}:${collectionRequestId}`;
                 const isStopPending = pendingAction?.assignmentId === assignment.id &&
                   pendingAction?.collectionRequestId === collectionRequestId;
-                const isCompleting = isStopPending && pendingAction?.action === "complete";
                 const isFailing = isStopPending && pendingAction?.action === "fail";
 
                 return (
@@ -719,21 +719,12 @@ function DeliveryAssignmentsPanel({
                           {isCompleted ? "Concluída" : canWorkStops ? "Pendente" : "Aguardando início"}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={!canWorkStops || isCompleted || isStopPending}
-                          onClick={() => onCompleteStop(assignment, collectionRequestId)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyco-green px-3 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isCompleting ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          )}
-                          Concluir
-                        </button>
-                      </div>
+                      {canWorkStops && !isCompleted && (
+                        <CollectionCompletionForm
+                          label="Código de confirmação"
+                          onConfirm={(code, idempotencyKey) => onCompleteStop(assignment, collectionRequestId, code, idempotencyKey)}
+                        />
+                      )}
                     </div>
                     <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
                       <input
@@ -1123,15 +1114,51 @@ export default function SavedRoutesPage() {
     );
   }
 
-  function completeDeliveryStop(assignment: RouteAssignment, collectionRequestId: string) {
-    if (!assignment.id || !sessionMeta.generatorId) return;
-    runDeliveryAction(
-      assignment,
-      "complete",
-      `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/stops/${collectionRequestId}/complete`,
-      undefined,
-      collectionRequestId,
-    );
+  async function completeDeliveryStop(
+    assignment: RouteAssignment,
+    collectionRequestId: string,
+    code: string,
+    idempotencyKey: string,
+  ): Promise<Response> {
+    if (!assignment.id || !sessionMeta.generatorId) {
+      return Response.json({ error: "Rota do entregador inválida." }, { status: 400 });
+    }
+
+    setDeliveryPendingAction({ assignmentId: assignment.id, collectionRequestId, action: "complete" });
+    setDeliveryFeedback(undefined);
+
+    try {
+      const response = await fetch(`/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/stops/${collectionRequestId}/complete`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({ code }),
+      });
+
+      if (response.status === 200) {
+        const data = await response.clone().json().catch(() => null);
+        const updatedAssignment = data?.assignment
+          ? normalizeDeliveryAssignments([data.assignment])[0]
+          : normalizeDeliveryAssignments([data])[0];
+        if (updatedAssignment) {
+          replaceDeliveryAssignment(updatedAssignment);
+        } else {
+          await loadDeliveryAssignments();
+        }
+        setDeliveryFeedback({ type: "success", message: "Coleta confirmada." });
+      } else if (response.status === 202) {
+        setDeliveryFeedback({ type: "success", message: "Confirmação aceita. A rota será atualizada após a reconciliação." });
+      }
+
+      return response;
+    } catch {
+      return Response.json({ error: "Erro ao confirmar coleta. Tente novamente." }, { status: 500 });
+    } finally {
+      setDeliveryPendingAction(undefined);
+    }
   }
 
   function failDeliveryStop(assignment: RouteAssignment, collectionRequestId: string) {
