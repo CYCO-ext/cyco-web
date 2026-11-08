@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Loader2,
   MapPin,
-  PackageCheck,
   Play,
   RotateCcw,
   Route,
@@ -18,6 +17,7 @@ import {
 
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import CollectionCompletionForm from "@/app/components/CollectionCompletionForm";
 import { button } from "@/app/components/ui";
 import { getSessionMeta, isDeliverymanRole } from "@/app/lib/createCollection";
 import {
@@ -93,7 +93,7 @@ function AssignmentCard({
   failReasons: Record<string, string>;
   onFailReasonChange: (key: string, value: string) => void;
   onStart: (assignment: RouteAssignment) => void;
-  onCompleteStop: (assignment: RouteAssignment, collectionRequestId: string) => void;
+  onCompleteStop: (assignment: RouteAssignment, collectionRequestId: string, code: string, idempotencyKey: string) => Promise<Response>;
   onFailStop: (assignment: RouteAssignment, collectionRequestId: string) => void;
   onFinish: (assignment: RouteAssignment) => void;
 }) {
@@ -197,19 +197,12 @@ function AssignmentCard({
                 </div>
 
                 <div className="grid gap-2 md:min-w-72">
-                  <button
-                    type="button"
-                    onClick={() => onCompleteStop(assignment, collectionRequestId)}
-                    disabled={!canWork || isPending}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2d5b36] px-3 py-2 text-sm font-semibold text-white hover:bg-[#24492c] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isPending && pendingAction?.action === "complete" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <PackageCheck className="h-4 w-4" />
-                    )}
-                    Concluir coleta
-                  </button>
+                  {canWork && (
+                    <CollectionCompletionForm
+                      label="Código de confirmação"
+                      onConfirm={(code, idempotencyKey) => onCompleteStop(assignment, collectionRequestId, code, idempotencyKey)}
+                    />
+                  )}
                   <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                     <input
                       value={failReasons[reasonKey] ?? ""}
@@ -355,15 +348,51 @@ export default function DeliverymanPage() {
     runAction(assignment, "start", `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/start`);
   }
 
-  function completeStop(assignment: RouteAssignment, collectionRequestId: string) {
-    if (!sessionMeta.generatorId || !assignment.id) return;
-    runAction(
-      assignment,
-      "complete",
-      `/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/stops/${collectionRequestId}/complete`,
-      undefined,
-      collectionRequestId,
-    );
+  async function completeStop(
+    assignment: RouteAssignment,
+    collectionRequestId: string,
+    code: string,
+    idempotencyKey: string,
+  ): Promise<Response> {
+    if (!sessionMeta.generatorId || !assignment.id) {
+      return Response.json({ error: "Entrega ou entregador inválido." }, { status: 400 });
+    }
+
+    setPendingAction({ assignmentId: assignment.id, collectionRequestId, action: "complete" });
+    setFeedback(undefined);
+
+    try {
+      const response = await fetch(`/api/deliverymen/${sessionMeta.generatorId}/assignments/${assignment.id}/stops/${collectionRequestId}/complete`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({ code }),
+      });
+
+      if (response.status === 200) {
+        const data = await response.clone().json().catch(() => null);
+        const updatedAssignment = data?.assignment
+          ? normalizeDeliveryAssignments([data.assignment])[0]
+          : normalizeDeliveryAssignments([data])[0];
+        if (updatedAssignment) {
+          setAssignments((current) => current.map((item) => item.id === updatedAssignment.id ? updatedAssignment : item));
+        } else {
+          await loadAssignments();
+        }
+        setFeedback({ type: "success", message: "Coleta confirmada." });
+      } else if (response.status === 202) {
+        setFeedback({ type: "success", message: "Confirmação aceita. A rota será atualizada após a reconciliação." });
+      }
+
+      return response;
+    } catch {
+      return Response.json({ error: "Erro ao confirmar coleta. Tente novamente." }, { status: 500 });
+    } finally {
+      setPendingAction(undefined);
+    }
   }
 
   function failStop(assignment: RouteAssignment, collectionRequestId: string) {
