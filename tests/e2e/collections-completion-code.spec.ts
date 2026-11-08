@@ -143,6 +143,19 @@ test("the code action disappears after the collection is completed", async ({ pa
   await expect(page.getByRole("heading", { name: "Código de confirmação" })).toHaveCount(0);
 });
 
+test("the code action appears only after the collector accepts the collection", async ({ page }) => {
+  const mock = await mockCollectionsPage(page, "GENERATOR", "PENDING");
+  await page.goto("/collections");
+
+  await expect(page.getByRole("heading", { name: "Minhas coletas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ver código" })).toHaveCount(0);
+  expect(mock.getCodeReadCount()).toBe(0);
+
+  mock.setCollectionStatus("IN_PROGRESS");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Ver código" })).toBeVisible();
+});
+
 test("collector completion requires code and only refreshes after HTTP 200", async ({ page }) => {
   const mock = await mockCollectionsPage(page, "WASTE_COLLECTOR", "IN_PROGRESS");
   let confirmations = 0;

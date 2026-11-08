@@ -143,7 +143,7 @@ function GeneratorCompletionCodeCard({
   const [code, setCode] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const isActive = !["COMPLETED", "CANCELED", "CANCELLED"].includes(collection.status);
+  const isActive = ["IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
 
   if (
     viewerRole !== "GENERATOR" ||
