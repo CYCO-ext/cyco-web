@@ -18,9 +18,13 @@ export const completionActors = {
 
 export const pendingCollectionFixture = {
   id: "e2e-collection-request-001",
-  status: "ON_THE_WAY",
+  status: "IN_PROGRESS",
   generatorId: completionActors.generator.id,
   collectorId: completionActors.collector.id,
   deliverymanId: completionActors.deliveryman.id,
   completionId: "e2e-completion-001",
+  materialIds: ["synthetic-paper"],
+  weight: 3,
+  createdAt: "2026-11-01T12:00:00Z",
+  updatedAt: "2026-11-01T12:30:00Z",
 } as const;

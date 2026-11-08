@@ -65,6 +65,10 @@ function getApiError(data: unknown, fallback: string): string {
   if (typeof data === "object" && data !== null && "error" in data) {
     const error = (data as { error?: unknown }).error;
     if (typeof error === "string" && error.trim()) return error;
+    if (typeof error === "object" && error !== null && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
   }
 
   return fallback;
@@ -120,9 +124,80 @@ function isOnWayEligible(collection: CollectionSummary): boolean {
 }
 
 function hasViewerConfirmed(collection: CollectionSummary, viewerRole?: ViewerRole): boolean {
-  if (viewerRole === "GENERATOR") return collection.generatorConfirmed;
   if (viewerRole === "WASTE_COLLECTOR") return collection.collectorConfirmed;
   return false;
+}
+
+function GeneratorCompletionCodeCard({
+  collection,
+  viewerRole,
+  authenticatedGeneratorId,
+  token,
+}: {
+  collection: CollectionSummary;
+  viewerRole?: ViewerRole;
+  authenticatedGeneratorId?: string;
+  token?: string;
+}) {
+  const [code, setCode] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+  const isActive = !["COMPLETED", "CANCELED", "CANCELLED"].includes(collection.status);
+
+  if (
+    viewerRole !== "GENERATOR" ||
+    !authenticatedGeneratorId ||
+    authenticatedGeneratorId !== collection.generatorId ||
+    !isActive
+  ) {
+    return null;
+  }
+
+  const readCode = async () => {
+    setLoading(true);
+    setError(undefined);
+
+    try {
+      const headers: HeadersInit = token ? { authorization: `Bearer ${token}` } : {};
+      const response = await fetch(`/api/collections/requests/${encodeURIComponent(collection.id)}/completion-code`, {
+        method: "POST",
+        cache: "no-store",
+        headers,
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(getApiError(data, "Não foi possível consultar o código da coleta."));
+      }
+
+      if (typeof data?.code !== "string" || !/^\d{6}$/.test(data.code)) {
+        throw new Error("A resposta do código de confirmação é inválida.");
+      }
+
+      setCode(data.code);
+    } catch (readError) {
+      setError(readError instanceof Error ? readError.message : "Não foi possível consultar o código da coleta.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="mt-4 rounded-xl border border-cyco-light bg-cyco-light/40 p-3" aria-label="Código de confirmação">
+      <h3 className="text-sm font-semibold text-cyco-green">Código de confirmação</h3>
+      <p className="mt-1 text-xs text-gray-600">Compartilhe o código com o coletor no momento da retirada.</p>
+      {code && <p className="mt-2 font-mono text-xl font-bold tracking-[0.3em]" aria-label="Código da coleta">{code}</p>}
+      {error && <p className="mt-2 text-sm text-red-700" role="alert">{error}</p>}
+      <button
+        type="button"
+        onClick={readCode}
+        disabled={loading}
+        className="mt-2 rounded-xl border border-cyco-green bg-white px-3 py-2 text-sm font-semibold text-cyco-green disabled:opacity-60"
+      >
+        {loading ? "Consultando código..." : code ? "Consultar novamente" : "Ver código"}
+      </button>
+    </section>
+  );
 }
 
 function getDeliverymanLabel(deliveryman: DeliverymanProfile): string {
@@ -262,6 +337,8 @@ function CollectionCard({
   actionPending,
   actionPendingKind,
   feedback,
+  authenticatedGeneratorId,
+  token,
   onAccept,
   onReject,
   onFinish,
@@ -279,6 +356,8 @@ function CollectionCard({
   actionPending: boolean;
   actionPendingKind?: CollectionActionKind;
   feedback?: ActionFeedback;
+  authenticatedGeneratorId?: string;
+  token?: string;
   onAccept: (collectionId: string) => void;
   onReject: (collectionId: string) => void;
   onFinish: (collectionId: string) => void;
@@ -291,7 +370,7 @@ function CollectionCard({
 }) {
   const showAccept = viewerRole === "WASTE_COLLECTOR" && isAcceptEligible(collection);
   const showReject = viewerRole === "WASTE_COLLECTOR" && isRejectEligible(collection);
-  const showFinish = !!viewerRole && isFinishEligible(collection);
+  const showFinish = viewerRole === "WASTE_COLLECTOR" && isFinishEligible(collection);
   const showCancel = !!viewerRole && isCancelEligible(collection);
   const showOnWay = viewerRole === "WASTE_COLLECTOR" && isOnWayEligible(collection);
   const showAssignDeliveryman = viewerRole === "WASTE_COLLECTOR" && ["IN_PROGRESS", "COLLECTOR_ON_THE_WAY", "ON_THE_WAY"].includes(collection.status);
@@ -368,9 +447,15 @@ function CollectionCard({
             sem coletor
           </span>
         )}
-        <ConfirmationFlag label="Gerador" confirmed={collection.generatorConfirmed} />
         <ConfirmationFlag label="Coletor" confirmed={collection.collectorConfirmed} />
       </div>
+
+      <GeneratorCompletionCodeCard
+        collection={collection}
+        viewerRole={viewerRole}
+        authenticatedGeneratorId={authenticatedGeneratorId}
+        token={token}
+      />
 
       {(showAccept || showReject || showFinish || showOnWay || showCancel || feedback) && (
         <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -818,18 +903,14 @@ export default function CollectionsPage() {
   }, [loadCollections, sessionMeta.generatorId, sessionMeta.token]);
 
   const handleFinish = useCallback(async (collectionId: string) => {
-    if (!viewerRole) return;
+    if (viewerRole !== "WASTE_COLLECTOR") return;
 
     setActionPendingId(collectionId);
     setActionPendingKind("finish");
     setActionFeedback(undefined);
 
-    const endpoint = viewerRole === "GENERATOR"
-      ? `/api/collections/requests/${collectionId}/confirm-generator`
-      : `/api/collections/requests/${collectionId}/confirm-collector`;
-    const fallback = viewerRole === "GENERATOR"
-      ? "Erro ao finalizar coleta como gerador."
-      : "Erro ao finalizar coleta como coletor.";
+    const endpoint = `/api/collections/requests/${collectionId}/confirm-collector`;
+    const fallback = "Erro ao finalizar coleta como coletor.";
 
     try {
       const headers: HeadersInit = sessionMeta.token
@@ -1068,6 +1149,8 @@ export default function CollectionsPage() {
                       actionPending={actionPendingId === collection.id}
                       actionPendingKind={actionPendingId === collection.id ? actionPendingKind : undefined}
                       feedback={actionFeedback?.collectionId === collection.id ? actionFeedback : undefined}
+                      authenticatedGeneratorId={sessionMeta.generatorId}
+                      token={sessionMeta.token}
                       deliverymen={deliverymen}
                       deliverymenLoading={deliverymenLoading}
                       assignmentPending={actionPendingId === collection.id && actionPendingKind === "assign"}
