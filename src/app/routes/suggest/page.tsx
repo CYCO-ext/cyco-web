@@ -17,7 +17,7 @@ import {
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { button, Input } from "@/app/components/ui";
-import { getSessionMeta } from "@/app/lib/createCollection";
+import { getSessionMeta, Material, normalizeMaterials } from "@/app/lib/createCollection";
 import {
   CollectionSummary,
   formatCollectionAddress,
@@ -64,10 +64,12 @@ function CandidateCard({
   collection,
   selected,
   onToggle,
+  materialNames,
 }: {
   collection: CollectionSummary;
   selected: boolean;
   onToggle: (id: string) => void;
+  materialNames: Map<string, string>;
 }) {
   return (
     <label className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition ${
@@ -98,7 +100,7 @@ function CandidateCard({
           {collection.materialIds.length ? (
             collection.materialIds.map((material) => (
               <span key={material} className="rounded-full bg-white px-2 py-0.5 text-cyco-green">
-                {material}
+                {materialNames.get(material) ?? "Material não identificado"}
               </span>
             ))
           ) : (
@@ -259,6 +261,7 @@ export default function SuggestRoutePage() {
   const sessionMeta = getSessionMeta(session);
   const [form, setForm] = useState<RouteSuggestionFormState>(createInitialRouteSuggestionFormState);
   const [candidates, setCandidates] = useState<CollectionSummary[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidatesError, setCandidatesError] = useState<PageError>();
   const [submitError, setSubmitError] = useState<PageError>();
@@ -272,6 +275,12 @@ export default function SuggestRoutePage() {
   const [registeredLocationState, setRegisteredLocationState] = useState<RegisteredLocationState>("idle");
   const [registeredLocationError, setRegisteredLocationError] = useState<string>();
   const isCollector = isCollectorRole(sessionMeta.role);
+  const materialNames = useMemo(() => new Map(
+    materials.flatMap((material) => [
+      [material.id, material.name] as const,
+      [material.name, material.name] as const,
+    ]),
+  ), [materials]);
 
   const headers = useMemo((): HeadersInit => (
     sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}
@@ -320,6 +329,28 @@ export default function SuggestRoutePage() {
     if (status !== "authenticated" || !isCollector) return;
     loadCandidates();
   }, [isCollector, loadCandidates, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let cancelled = false;
+    fetch("/api/materials")
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error("Erro ao buscar materiais.");
+        return normalizeMaterials(data);
+      })
+      .then((loadedMaterials) => {
+        if (!cancelled) setMaterials(loadedMaterials);
+      })
+      .catch(() => {
+        if (!cancelled) setMaterials([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
 
   const requestLocation = useCallback(() => {
     if (!("geolocation" in navigator)) {
@@ -692,6 +723,7 @@ export default function SuggestRoutePage() {
                             collection={collection}
                             selected={form.selectedRequestIds.includes(collection.id)}
                             onToggle={toggleCandidate}
+                            materialNames={materialNames}
                           />
                         ))}
                       </div>
@@ -872,7 +904,7 @@ export default function SuggestRoutePage() {
                           <div className="mt-2 flex flex-wrap gap-2">
                             {selectedMaterialIds.map((material) => (
                               <span key={material} className="rounded-full bg-white px-2 py-0.5 text-xs text-cyco-green">
-                                {material}
+                                {materialNames.get(material) ?? "Material não identificado"}
                               </span>
                             ))}
                           </div>

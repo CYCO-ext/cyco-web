@@ -103,9 +103,18 @@ type CollectionModalState =
   | { status: "error"; collectionId: string; message: string };
 
 function getApiError(data: unknown, fallback: string): string {
+  // The collections API returns some failures as plain text. Its proxy wraps
+  // that text in a JSON string, so accept it here instead of hiding the cause.
+  if (typeof data === "string" && data.trim()) return data.trim();
+
   if (typeof data === "object" && data !== null && "error" in data) {
     const error = (data as { error?: unknown }).error;
     if (typeof error === "string" && error.trim()) return error;
+  }
+
+  if (typeof data === "object" && data !== null && "message" in data) {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
   }
 
   return fallback;
@@ -806,14 +815,22 @@ export default function SavedRoutesPage() {
     setError(undefined);
 
     try {
-      const res = await fetch("/api/collectors/routes/saved", { headers });
+      const res = await fetch(
+        `/api/collectors/routes/saved?collectorId=${encodeURIComponent(sessionMeta.generatorId ?? "")}`,
+        { headers },
+      );
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
         throw new Error(getApiError(data, "Erro ao buscar rotas salvas."));
       }
 
-      setRoutes(normalizeSavedRoutes(data));
+      // The collections API currently lists saved routes across collectors.
+      // Keep this screen scoped to the authenticated collector so it cannot
+      // offer assignments for routes owned by another collector.
+      setRoutes(normalizeSavedRoutes(data).filter(
+        (route) => route.collectorId === sessionMeta.generatorId,
+      ));
     } catch (err) {
       setRoutes([]);
       setError({
@@ -822,7 +839,7 @@ export default function SavedRoutesPage() {
     } finally {
       setLoading(false);
     }
-  }, [headers, isCollector]);
+  }, [headers, isCollector, sessionMeta.generatorId]);
 
   const loadDeliverymen = useCallback(async () => {
     if (!isCollector || !sessionMeta.generatorId) {

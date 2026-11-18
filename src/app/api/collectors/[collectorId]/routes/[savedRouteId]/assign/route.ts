@@ -34,6 +34,15 @@ export async function POST(req: NextRequest, context: RouteContext) {
       deliverymanId: body?.deliverymanId,
     }),
   });
-  const data = await res.json().catch(() => null);
+  const responseText = await res.text();
+  let data: unknown = null;
+  if (responseText.trim()) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = responseText.trim();
+    }
+  }
+
   return NextResponse.json(data, { status: res.status });
 }

@@ -22,7 +22,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json(normalizeSavedRoutes(data));
+    const collectorId = req.nextUrl.searchParams.get("collectorId")?.trim();
+    const routes = normalizeSavedRoutes(data);
+    return NextResponse.json(collectorId
+      ? routes.filter((route) => route.collectorId === collectorId)
+      : routes);
   } catch {
     return NextResponse.json({ error: "Erro ao buscar rotas salvas" }, { status: 500 });
   }

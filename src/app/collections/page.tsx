@@ -20,7 +20,7 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import CollectionCompletionForm from "@/app/components/CollectionCompletionForm";
 import { button } from "@/app/components/ui";
-import { getSessionMeta, isGeneratorRole } from "@/app/lib/createCollection";
+import { getSessionMeta, isGeneratorRole, Material, normalizeMaterials } from "@/app/lib/createCollection";
 import {
   DeliverymanProfile,
   normalizeDeliverymen,
@@ -332,6 +332,7 @@ function CounterpartDetails({
 
 function CollectionCard({
   collection,
+  materialNames,
   counterpart,
   viewerRole,
   profileLoading,
@@ -352,6 +353,7 @@ function CollectionCard({
   onAssignDeliveryman,
 }: {
   collection: CollectionSummary;
+  materialNames: Map<string, string>;
   counterpart?: CounterpartProfile;
   viewerRole?: ViewerRole;
   profileLoading: boolean;
@@ -408,7 +410,7 @@ function CollectionCard({
         {collection.materialIds.length > 0 ? (
           collection.materialIds.map((material) => (
             <span key={material} className="rounded-full bg-cyco-light px-2.5 py-1 text-xs text-cyco-green">
-              {material}
+              {materialNames.get(material) ?? "Material não identificado"}
             </span>
           ))
         ) : (
@@ -593,6 +595,7 @@ export default function CollectionsPage() {
   const sessionMeta = getSessionMeta(session);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [counterpartProfiles, setCounterpartProfiles] = useState<CounterpartProfiles>({});
   const [deliverymen, setDeliverymen] = useState<DeliverymanProfile[]>([]);
   const [routeAssignedCollectionIds, setRouteAssignedCollectionIds] = useState<Set<string>>(new Set());
@@ -604,6 +607,12 @@ export default function CollectionsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PageError>();
   const viewerRole = getViewerRole(sessionMeta.role);
+  const materialNames = useMemo(() => new Map(
+    materials.flatMap((material) => [
+      [material.id, material.name] as const,
+      [material.name, material.name] as const,
+    ]),
+  ), [materials]);
 
   const roleQuery = useMemo(() => {
     if (!sessionMeta.generatorId) return undefined;
@@ -708,6 +717,28 @@ export default function CollectionsPage() {
       router.push("/auth/login");
     }
   }, [status, router]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let cancelled = false;
+    fetch("/api/materials")
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error("Erro ao buscar materiais.");
+        return normalizeMaterials(data);
+      })
+      .then((loadedMaterials) => {
+        if (!cancelled) setMaterials(loadedMaterials);
+      })
+      .catch(() => {
+        if (!cancelled) setMaterials([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
 
   const loadCollections = useCallback(async () => {
     if (!roleQuery) {
@@ -1180,6 +1211,7 @@ export default function CollectionsPage() {
                     <CollectionCard
                       key={collection.id}
                       collection={collection}
+                      materialNames={materialNames}
                       counterpart={counterpart}
                       viewerRole={viewerRole}
                       profileLoading={profilesLoading}

@@ -14,6 +14,11 @@ export default function WelcomePage() {
   useEffect(() => {
     if (status !== "loading" && !session) {
       router.replace("/auth/login");
+      return;
+    }
+
+    if (session && isDeliverymanRole(getSessionMeta(session).role)) {
+      router.replace("/deliveryman");
     }
   }, [status, session, router]);
 
@@ -21,10 +26,7 @@ export default function WelcomePage() {
 
   const sessionMeta = getSessionMeta(session);
 
-  if (isDeliverymanRole(sessionMeta.role)) {
-    router.replace("/deliveryman");
-    return null;
-  }
+  if (isDeliverymanRole(sessionMeta.role)) return null;
 
   const userType = sessionMeta.role === "WASTE_COLLECTOR" || sessionMeta.role === "CATADOR"
     ? "WASTE_COLLECTOR"
