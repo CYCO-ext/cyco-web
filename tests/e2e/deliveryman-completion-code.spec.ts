@@ -49,6 +49,14 @@ test("deliveryman keeps stops pending on 422 and 202, then reconciles progress o
       }]),
     });
   });
+  await page.route("**/api/materials", route => route.fulfill({ json: [{ id: "paper", name: "Papelão" }] }));
+  await page.route(`**/api/collections/${stopIds[0]}`, route => route.fulfill({ json: {
+    id: stopIds[0], generatorId: "generator-details", weight: 12.5,
+    materialIds: ["paper", "Vidro"], status: "IN_PROGRESS",
+    createdAt: "2026-11-01T12:00:00Z", updatedAt: "2026-11-01T12:00:00Z",
+    address: { street: "Rua das Flores", number: "120", city: "Recife", state: "PE", zipCode: "50000-000" },
+  } }));
+  await page.route("**/api/generator/generator-details", route => route.fulfill({ json: { id: "generator-details", name: "Maria da Silva" } }));
   await page.route("**/api/deliverymen/*/assignments/*/stops/*/complete", async (route) => {
     completionCalls += 1;
     const request = route.request();
@@ -104,6 +112,16 @@ test("deliveryman keeps stops pending on 422 and 202, then reconciles progress o
   await page.goto("/deliveryman");
   await expect(page.getByRole("heading", { name: "Painel do entregador" })).toBeVisible();
   await expect(page.getByText("0 de 2 coletas concluídas")).toBeVisible();
+  await expect(page.getByText("Maria da Silva")).toBeVisible();
+  await expect(page.getByText("12,5 kg")).toBeVisible();
+  await expect(page.getByText("Papelão", { exact: true })).toBeVisible();
+  await expect(page.getByText("Vidro", { exact: true })).toBeVisible();
+  await expect(page.getByText("Rua das Flores, 120 - Recife/PE - CEP 50000-000")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Abrir no mapa", exact: false })).toHaveAttribute("href", /query=Rua%20das%20Flores/);
+  await expect(page.getByText("Não foi possível carregar os detalhes desta coleta.")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText("Maria da Silva")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const inputs = page.locator('input[name="completionCode"]');
   const submitButtons = page.getByRole("button", { name: "Confirmar coleta" });
   await expect(inputs).toHaveCount(2);

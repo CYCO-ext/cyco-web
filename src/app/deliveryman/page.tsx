@@ -17,9 +17,10 @@ import {
 
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import DeliveryStopDetails from "@/app/components/DeliveryStopDetails";
 import CollectionCompletionForm from "@/app/components/CollectionCompletionForm";
 import { button } from "@/app/components/ui";
-import { getSessionMeta, isDeliverymanRole } from "@/app/lib/createCollection";
+import { getSessionMeta, isDeliverymanRole, normalizeMaterials } from "@/app/lib/createCollection";
 import {
   buildFailStopRequest,
   normalizeDeliveryAssignments,
@@ -80,6 +81,8 @@ function formatDateTime(value?: string | null): string {
 
 function AssignmentCard({
   assignment,
+  token,
+  materialNames,
   pendingAction,
   failReasons,
   onFailReasonChange,
@@ -89,6 +92,8 @@ function AssignmentCard({
   onFinish,
 }: {
   assignment: RouteAssignment;
+  token?: string;
+  materialNames: Record<string, string>;
   pendingAction?: PendingAction;
   failReasons: Record<string, string>;
   onFailReasonChange: (key: string, value: string) => void;
@@ -176,7 +181,7 @@ function AssignmentCard({
             return (
               <section
                 key={collectionRequestId}
-                className="grid gap-3 rounded-2xl border border-emerald-900/10 bg-white p-4 md:grid-cols-[1fr_auto] md:items-center"
+                className="grid gap-3 rounded-2xl border border-emerald-900/10 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -185,9 +190,10 @@ function AssignmentCard({
                     </span>
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-[#263827]">Coleta #{collectionRequestId.slice(0, 8)}</h3>
-                      <p className="mt-0.5 text-xs text-[#77846f]">{collectionRequestId}</p>
+                      <p className="mt-0.5 break-all text-xs text-[#53664b]">{collectionRequestId}</p>
                     </div>
                   </div>
+                  <DeliveryStopDetails collectionId={collectionRequestId} token={token} materialNames={materialNames} />
                   {stopDone && (
                     <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-800">
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -250,6 +256,7 @@ export default function DeliverymanPage() {
   const { data: session, status } = useSession();
   const sessionMeta = getSessionMeta(session);
   const isDeliveryman = isDeliverymanRole(sessionMeta.role);
+  const [materialNames, setMaterialNames] = useState<Record<string, string>>({});
   const [assignments, setAssignments] = useState<RouteAssignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<PageError>();
@@ -260,6 +267,18 @@ export default function DeliverymanPage() {
   const headers = useMemo((): Record<string, string> => (
     sessionMeta.token ? { authorization: `Bearer ${sessionMeta.token}` } : {}
   ), [sessionMeta.token]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !isDeliveryman) return;
+    const controller = new AbortController();
+    fetch("/api/materials", { headers, signal: controller.signal })
+      .then(async response => response.ok ? normalizeMaterials(await response.json()) : [])
+      .then(materials => {
+        if (!controller.signal.aborted) setMaterialNames(Object.fromEntries(materials.map(item => [item.id, item.name])));
+      })
+      .catch(() => { if (!controller.signal.aborted) setMaterialNames({}); });
+    return () => controller.abort();
+  }, [headers, isDeliveryman, status]);
 
   const loadAssignments = useCallback(async () => {
     if (!isDeliveryman || !sessionMeta.generatorId) {
@@ -529,6 +548,8 @@ export default function DeliverymanPage() {
                       <AssignmentCard
                         key={assignment.id ?? `${assignment.savedRouteId}-${assignment.vehicleIndex}`}
                         assignment={assignment}
+                        token={sessionMeta.token}
+                        materialNames={materialNames}
                         pendingAction={pendingAction}
                         failReasons={failReasons}
                         onFailReasonChange={(key, value) => setFailReasons((current) => ({ ...current, [key]: value }))}
