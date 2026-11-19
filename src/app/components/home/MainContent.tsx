@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useMaterialNames } from "@/app/hooks/useMaterialNames";
+
 import CreateCollectionCard from "./cards/CreateCollectionCard";
 import CreateRouteSuggestionCard from "./cards/CreateRouteSuggestionCard";
 import ActiveCollectionsCard from "./cards/ActiveCollectionsCard";
@@ -25,6 +27,7 @@ interface MainContentProps {
 }
 
 export default function MainContent({ userType, userId, token }: MainContentProps) {
+  const materialNames = useMaterialNames(token);
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState(false);
@@ -66,7 +69,7 @@ export default function MainContent({ userType, userId, token }: MainContentProp
   }, [loadCollections]);
 
   const activeCollectionsCount = useMemo(() => countActiveCollections(collections), [collections]);
-  const nextCollections = useMemo(() => mapCollectionsToNextViews(collections, 2), [collections]);
+  const nextCollections = useMemo(() => mapCollectionsToNextViews(collections, 2, materialNames), [collections, materialNames]);
   const lastCollections = useMemo(() => mapCollectionsToLastRows(collections, 2), [collections]);
 
   return (

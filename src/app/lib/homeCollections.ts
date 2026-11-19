@@ -1,3 +1,4 @@
+import { materialDisplayName } from "@/app/lib/createCollection";
 import {
   CollectionSummary,
   CollectionStatus,
@@ -38,7 +39,7 @@ export function countActiveCollections(collections: CollectionSummary[]): number
   return collections.filter((collection) => collection.status === "IN_PROGRESS").length;
 }
 
-export function mapCollectionsToNextViews(collections: CollectionSummary[], limit = 2): NextCollectionView[] {
+export function mapCollectionsToNextViews(collections: CollectionSummary[], limit = 2, materialNames: ReadonlyMap<string, string> = new Map()): NextCollectionView[] {
   return collections.filter((collection) => collection.status === "IN_PROGRESS").slice(0, limit).map((collection) => {
     const date = collectionDate(collection);
 
@@ -48,7 +49,7 @@ export function mapCollectionsToNextViews(collections: CollectionSummary[], limi
       location: formatCollectionAddress(collection),
       time: formatTime(date),
       weight: formatWeight(collection.weight),
-      materials: collection.materialIds.length ? collection.materialIds : ["Sem materiais"],
+      materials: collection.materialIds.length ? collection.materialIds.map(id => materialDisplayName(id, materialNames)) : ["Sem materiais"],
     };
   });
 }

@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 
+import { useMaterialNames } from "@/app/hooks/useMaterialNames";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import CollectionCompletionForm from "@/app/components/CollectionCompletionForm";
@@ -38,7 +39,7 @@ import {
   normalizeCollections,
   statusLabel,
 } from "@/app/lib/collectionsPage";
-import { getSessionMeta, isDeliverymanRole } from "@/app/lib/createCollection";
+import { getSessionMeta, isDeliverymanRole, materialDisplayName } from "@/app/lib/createCollection";
 import {
   buildAssignDeliverymanRequest,
   buildFailStopRequest,
@@ -176,9 +177,11 @@ function getDeliverymanDisplayName(deliveryman: DeliverymanProfile | undefined, 
 
 function CollectionDetailsModal({
   state,
+  materialNames,
   onClose,
 }: {
   state: CollectionModalState;
+  materialNames: ReadonlyMap<string, string>;
   onClose: () => void;
 }) {
   if (state.status === "idle") return null;
@@ -255,7 +258,7 @@ function CollectionDetailsModal({
                 {state.collection.materialIds.length > 0 ? (
                   state.collection.materialIds.map((material) => (
                     <span key={material} className="rounded-full bg-cyco-light px-2.5 py-1 text-xs text-cyco-green">
-                      {material}
+                      {materialDisplayName(material, materialNames)}
                     </span>
                   ))
                 ) : (
@@ -775,6 +778,7 @@ export default function SavedRoutesPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const sessionMeta = getSessionMeta(session);
+  const materialNames = useMaterialNames(sessionMeta.token);
   const isCollector = isCollectorRole(sessionMeta.role);
   const isDeliveryman = isDeliverymanRole(sessionMeta.role);
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
@@ -1488,7 +1492,7 @@ export default function SavedRoutesPage() {
         </main>
       </div>
 
-      <CollectionDetailsModal state={collectionModal} onClose={() => setCollectionModal({ status: "idle" })} />
+      <CollectionDetailsModal materialNames={materialNames} state={collectionModal} onClose={() => setCollectionModal({ status: "idle" })} />
     </div>
   );
 }

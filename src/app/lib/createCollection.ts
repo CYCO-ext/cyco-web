@@ -179,3 +179,12 @@ export function buildCreateCollectionRequest(
     },
   };
 }
+
+export function materialDisplayName(value: string, names: ReadonlyMap<string, string>): string {
+  const name = names.get(value);
+  if (name) return name;
+  // Older collections can contain names directly; never expose raw UUIDs as labels.
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+    ? "Material não disponível"
+    : value;
+}
