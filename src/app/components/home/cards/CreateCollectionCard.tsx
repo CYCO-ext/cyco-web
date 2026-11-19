@@ -17,10 +17,6 @@ export default function CreateCollectionCard() {
           Crie uma nova coleta!
         </h2>
 
-        <p className="text-sm text-[#2F4F2F]">
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-        </p>
-
         {/* Botão com efeito de click (active) */}
         <button className="bg-[#8DB37C] text-white px-6 py-2 rounded-full text-sm w-fit font-semibold
                            transition-all duration-150
